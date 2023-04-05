@@ -4,15 +4,17 @@ go 1.20
 
 require (
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
+	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/spf13/viper v1.15.0
 	github.com/techquest-tech/cronext v0.2.1
 	github.com/techquest-tech/gin-shared v0.5.6
-	github.com/techquest-tech/lokiclient v0.1.0
+	github.com/techquest-tech/lokiclient v0.1.1
 	go.uber.org/dig v1.16.1
 	go.uber.org/zap v1.24.0
 )
 
 require (
+	code.cloudfoundry.org/clock v0.0.0-20180518195852-02e53af36e6c // indirect
 	github.com/bytedance/sonic v1.8.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
@@ -24,6 +26,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.12.0 // indirect
 	github.com/goccy/go-json v0.10.0 // indirect
+	github.com/gofrs/uuid v3.3.0+incompatible // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
