@@ -4,15 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"os"
-	"time"
 
 	"github.com/asaskevich/EventBus"
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/cronext"
 	"github.com/techquest-tech/gin-shared/pkg/core"
-	"github.com/techquest-tech/gin-shared/pkg/tracing"
 	"github.com/techquest-tech/lokiclient"
 	"github.com/techquest-tech/monitor"
 	"go.uber.org/zap"
@@ -55,7 +52,7 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	loki.Config = conf
 
 	//random an ID
-	rand.Seed(time.Now().Unix())
+	// rand.Seed(time.Now().Unix())
 
 	ctx := context.TODO()
 	ch, err := conf.NewClient(ctx)
@@ -95,8 +92,8 @@ func (lm *LokiSetting) ReportError(err error) {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "error"
 
-	body, _ := json.Marshal(err)
-	lm.ch <- lokiclient.NewPushItem(header, string(body))
+	body := err.Error()
+	lm.ch <- lokiclient.NewPushItem(header, body)
 }
 
 func (lm *LokiSetting) cloneFixedHeader() map[string]string {
@@ -107,7 +104,7 @@ func (lm *LokiSetting) cloneFixedHeader() map[string]string {
 	return out
 }
 
-func (lm *LokiSetting) ReportTracing(tr *tracing.TracingDetails) {
+func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "tracing"
 	header["Optionname"] = tr.Optionname

@@ -6,7 +6,6 @@ import (
 	"github.com/asaskevich/EventBus"
 	"github.com/techquest-tech/cronext"
 	"github.com/techquest-tech/gin-shared/pkg/event"
-	"github.com/techquest-tech/gin-shared/pkg/tracing"
 	"go.uber.org/dig"
 	"go.uber.org/zap"
 )
@@ -18,7 +17,7 @@ type AppSettings struct {
 }
 
 type MonitorService interface {
-	ReportTracing(tr *tracing.TracingDetails)
+	ReportTracing(tr *TracingDetails)
 	ReportError(err error)
 	ReportScheduleJob(req cronext.JobHistory)
 }
