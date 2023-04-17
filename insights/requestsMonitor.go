@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/cronext"
 	"github.com/techquest-tech/gin-shared/pkg/core"
-	"github.com/techquest-tech/gin-shared/pkg/tracing"
 	"github.com/techquest-tech/monitor"
 	"go.uber.org/zap"
 )
@@ -64,7 +63,7 @@ func (appins *ResquestMonitor) ReportScheduleJob(req cronext.JobHistory) {
 		status = 500
 	}
 
-	details := &tracing.TracingDetails{
+	details := &monitor.TracingDetails{
 		Uri:     req.Job,
 		Method:  "Cron",
 		Durtion: req.Duration,
@@ -95,7 +94,7 @@ func (appins *ResquestMonitor) ReportError(err error) {
 	appins.logger.Debug("tracing error done", zap.Error(err))
 }
 
-func (appins *ResquestMonitor) ReportTracing(tr *tracing.TracingDetails) {
+func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) {
 	client := appins.getClient()
 
 	client.Context().Tags.Operation().SetName(fmt.Sprintf("%s %s", tr.Method, tr.Optionname))
@@ -107,17 +106,21 @@ func (appins *ResquestMonitor) ReportTracing(tr *tracing.TracingDetails) {
 	t.Source = tr.ClientIP
 	t.Properties["user-agent"] = tr.UserAgent
 	t.Properties["device"] = tr.Device
-	if tr.Body != "" {
+
+	req := monitor.ToByte(tr.Body)
+	resp := monitor.ToByte(tr.Resp)
+
+	if len(req) > 0 {
 		if appins.Details {
-			t.Properties["req"] = tr.Body
+			t.Properties["req"] = string(req)
 		}
-		t.Measurements["body-size"] = float64(len(tr.Body))
+		t.Measurements["body-size"] = float64(len(req))
 	}
-	if tr.Resp != "" {
+	if len(resp) > 0 {
 		if appins.Details {
-			t.Properties["resp"] = tr.Resp
+			t.Properties["resp"] = string(resp)
 		}
-		t.Measurements["resp-size"] = float64(len(tr.Resp))
+		t.Measurements["resp-size"] = float64(len(resp))
 	}
 
 	client.Track(t)
