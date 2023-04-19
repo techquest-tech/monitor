@@ -6,7 +6,6 @@ import (
 	"github.com/asaskevich/EventBus"
 	"github.com/techquest-tech/cronext"
 	"github.com/techquest-tech/gin-shared/pkg/event"
-	"go.uber.org/dig"
 	"go.uber.org/zap"
 )
 
@@ -22,10 +21,10 @@ type MonitorService interface {
 	ReportScheduleJob(req cronext.JobHistory)
 }
 
-type P struct {
-	dig.In
-	services []MonitorService `group:"monitor"`
-}
+// type P struct {
+// 	dig.In
+// 	services []MonitorService `group:"monitor"`
+// }
 
 func SubscribeMonitor(logger *zap.Logger, bus EventBus.Bus, item MonitorService) {
 	bus.SubscribeAsync(event.EventError, item.ReportError, false)
