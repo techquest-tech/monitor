@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/event"
+	"github.com/techquest-tech/gin-shared/pkg/ginshared"
 	"go.uber.org/zap"
 )
 
@@ -45,7 +46,6 @@ func (w RespLogging) Write(b []byte) (int, error) {
 }
 
 type TracingRequestService struct {
-	core.DefaultComponent
 	Bus      EventBus.Bus
 	Log      *zap.Logger
 	Console  bool
@@ -81,7 +81,6 @@ var InitTracingService = func(bus EventBus.Bus, logger *zap.Logger) *TracingRequ
 		c := InitConsoleTracingService(sr.Log)
 		sr.Bus.SubscribeAsync(event.EventTracing, c.LogBody, false)
 	}
-	core.RegisterComponent(sr)
 	return sr
 }
 
@@ -159,7 +158,13 @@ func (tr *TracingRequestService) LogfullRequestDetails(c *gin.Context) {
 
 func EnabledTracing() {
 	core.Provide(InitTracingService)
-	core.ProvideStartup(func(t *TracingRequestService) core.Startup {
-		return t
+	core.ProvideStartup(func(p core.OptionalParam[*TracingRequestService]) core.Startup {
+		return p.P
+	})
+	core.GetContainer().Invoke(func(p core.OptionalParam[*TracingRequestService]) {
+		if p.P != nil {
+			ginshared.RegisterComponent(p.P)
+			zap.L().Info("tracning is enabled.")
+		}
 	})
 }
