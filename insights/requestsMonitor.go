@@ -23,7 +23,7 @@ type AppInsightsSettings struct {
 type ResquestMonitor struct {
 	AppInsightsSettings
 	logger *zap.Logger
-	// client appinsights.TelemetryClient
+	client appinsights.TelemetryClient
 }
 
 func InitRequestMonitor(logger *zap.Logger) *ResquestMonitor {
@@ -31,20 +31,20 @@ func InitRequestMonitor(logger *zap.Logger) *ResquestMonitor {
 		Role:    core.AppName,
 		Version: core.Version,
 	}
-	client := &ResquestMonitor{
+	rm := &ResquestMonitor{
 		logger: logger,
 	}
 	settings := viper.Sub("tracing.azure")
 	if settings != nil {
 		settings.Unmarshal(&azureSetting)
 	}
-	client.AppInsightsSettings = azureSetting
+	rm.AppInsightsSettings = azureSetting
 	if keyFromenv := os.Getenv("APPINSIGHTS_INSTRUMENTATIONKEY"); keyFromenv != "" {
-		client.Key = keyFromenv
+		rm.Key = keyFromenv
 		logger.Info("read application insights key from ENV")
 	}
 
-	if client.Key == "" {
+	if rm.Key == "" {
 		logger.Warn("no application insights key provided, tracing function disabled.")
 		return nil
 	}
@@ -53,8 +53,9 @@ func InitRequestMonitor(logger *zap.Logger) *ResquestMonitor {
 	// bus.SubscribeAsync(event.EventTracing, client.ReportTracing, false)
 	// bus.SubscribeAsync(cronext.EventJobFinished, client.ReportScheduleJob, false)
 	// logger.Info("event subscribed for application insights", zap.Bool("details", client.Details))
-	client.getClient()
-	return client
+	rm.client = rm.getClient()
+	logger.Info("enabled applicationInsights client cache.")
+	return rm
 }
 
 func (appins *ResquestMonitor) ReportScheduleJob(req cronext.JobHistory) {
@@ -73,18 +74,18 @@ func (appins *ResquestMonitor) ReportScheduleJob(req cronext.JobHistory) {
 }
 
 func (appins *ResquestMonitor) getClient() appinsights.TelemetryClient {
-	// if appins.client == nil {
-	client := appinsights.NewTelemetryClient(appins.Key)
-	if appins.Role != "" {
-		client.Context().Tags.Cloud().SetRole(appins.Role)
+	if appins.client == nil {
+		client := appinsights.NewTelemetryClient(appins.Key)
+		if appins.Role != "" {
+			client.Context().Tags.Cloud().SetRole(appins.Role)
+		}
+		if appins.Version != "" {
+			client.Context().Tags.Application().SetVer(appins.Version)
+		}
+		appins.client = client
+		return client
 	}
-	if appins.Version != "" {
-		client.Context().Tags.Application().SetVer(appins.Version)
-	}
-	// appins.client = client
-	return client
-	// }
-	// return appins.client
+	return appins.client
 }
 
 func (appins *ResquestMonitor) ReportError(err error) {
@@ -104,6 +105,8 @@ func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) {
 	)
 
 	t.Source = tr.ClientIP
+	t.Properties["app"] = core.AppName
+	t.Properties["version"] = core.Version
 	t.Properties["user-agent"] = tr.UserAgent
 	t.Properties["device"] = tr.Device
 
