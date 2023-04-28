@@ -41,7 +41,7 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 		URL:      "http://127.0.0.1:3001",
 		Batch:    100,
 		Interval: "10s",
-		Gzip:     true,
+		Gzip:     false,
 	}
 	// logger.Info("connect to loki", zap.String("loki", settings.GetString("URL")))
 	err := settings.Unmarshal(conf)

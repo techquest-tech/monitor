@@ -3,6 +3,7 @@ package monitor
 import (
 	"bytes"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/asaskevich/EventBus"
@@ -85,6 +86,12 @@ var InitTracingService = func(bus EventBus.Bus, logger *zap.Logger) *TracingRequ
 }
 
 func (tr *TracingRequestService) LogfullRequestDetails(c *gin.Context) {
+	userAgent := c.Request.UserAgent()
+	if strings.HasPrefix(userAgent, "kube-probe") {
+		c.Next()
+		return
+	}
+
 	start := time.Now()
 	reqcache := make([]byte, 0)
 
