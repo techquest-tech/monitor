@@ -33,6 +33,8 @@ type TracingDetails struct {
 	ClientIP   string
 	UserAgent  string
 	Device     string
+	App        string
+	Version    string
 	// Props     map[string]interface{}
 }
 
@@ -158,6 +160,8 @@ func (tr *TracingRequestService) LogfullRequestDetails(c *gin.Context) {
 		ClientIP:   c.ClientIP(),
 		UserAgent:  c.Request.UserAgent(),
 		Device:     c.GetHeader("deviceID"),
+		App:        core.AppName,
+		Version:    core.Version,
 	}
 
 	tr.Bus.Publish(event.EventTracing, fullLogging)
@@ -171,7 +175,7 @@ func EnabledTracing() {
 	core.GetContainer().Invoke(func(p core.OptionalParam[*TracingRequestService]) {
 		if p.P != nil {
 			ginshared.RegisterComponent(p.P)
-			zap.L().Info("tracning is enabled.")
+			// zap.L().Info("tracy is enabled.")
 		}
 	})
 }
