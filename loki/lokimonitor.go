@@ -91,6 +91,8 @@ func (lm *LokiSetting) ReportScheduleJob(req cronext.JobHistory) {
 func (lm *LokiSetting) ReportError(err error) {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "error"
+	header["app"] = core.AppName
+	header["version"] = core.Version
 
 	body := err.Error()
 	lm.ch <- lokiclient.NewPushItem(header, body)
@@ -114,6 +116,17 @@ func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
 	header["ClientIP"] = tr.ClientIP
 	header["UserAgent"] = tr.UserAgent
 	header["Device"] = tr.Device
+
+	app := tr.App
+	if app == "" {
+		app = core.AppName
+	}
+	v := tr.Version
+	if v == "" {
+		v = core.Version
+	}
+	header["app"] = app
+	header["version"] = v
 
 	body, err := json.Marshal(tr)
 	if err != nil {
