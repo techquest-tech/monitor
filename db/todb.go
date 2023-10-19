@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/asaskevich/EventBus"
-	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/event"
+	"github.com/techquest-tech/gin-shared/pkg/orm"
 	"github.com/techquest-tech/monitor"
 	"go.uber.org/zap"
 	"gorm.io/datatypes"
@@ -37,14 +37,7 @@ func NewTracingRequestService(db *gorm.DB, logger *zap.Logger) (*TracingRequestS
 		DB:     db,
 		Logger: logger,
 	}
-	if viper.GetBool("database.initDB") {
-		err := db.AutoMigrate(&FullRequestDetails{})
-		if err != nil {
-			logger.Error("create fullRequestDetals failed.", zap.Error(err))
-		} else {
-			logger.Info("create fullRequestDetails table done")
-		}
-	}
+	orm.AppendEntity(&FullRequestDetails{})
 	return tr, nil
 }
 

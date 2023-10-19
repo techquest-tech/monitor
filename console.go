@@ -1,7 +1,8 @@
 package monitor
 
 import (
-	"github.com/goccy/go-json"
+	"encoding/json"
+
 	"go.uber.org/zap"
 )
 
