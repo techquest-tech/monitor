@@ -9,6 +9,7 @@ import (
 	"github.com/asaskevich/EventBus"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
+	"github.com/techquest-tech/gin-shared/pkg/auth"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/event"
 	"github.com/techquest-tech/gin-shared/pkg/ginshared"
@@ -33,8 +34,7 @@ type TracingDetails struct {
 	ClientIP   string
 	UserAgent  string
 	Device     string
-	App        string
-	Version    string
+	Tenant     string
 	// Props     map[string]interface{}
 }
 
@@ -160,8 +160,10 @@ func (tr *TracingRequestService) LogfullRequestDetails(c *gin.Context) {
 		ClientIP:   c.ClientIP(),
 		UserAgent:  c.Request.UserAgent(),
 		Device:     c.GetHeader("deviceID"),
-		App:        core.AppName,
-		Version:    core.Version,
+	}
+	if obj, ok := c.Get(auth.KeyUser); ok {
+		currentUser := obj.(*auth.AuthKey)
+		fullLogging.Tenant = currentUser.Owner
 	}
 
 	tr.Bus.Publish(event.EventTracing, fullLogging)

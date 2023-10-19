@@ -109,6 +109,9 @@ func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) {
 	t.Properties["version"] = core.Version
 	t.Properties["user-agent"] = tr.UserAgent
 	t.Properties["device"] = tr.Device
+	if tr.Tenant != "" {
+		t.Properties["tenant"] = tr.Tenant
+	}
 
 	req := monitor.ToByte(tr.Body)
 	resp := monitor.ToByte(tr.Resp)

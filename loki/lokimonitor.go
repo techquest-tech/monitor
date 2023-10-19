@@ -117,16 +117,17 @@ func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
 	header["UserAgent"] = tr.UserAgent
 	header["Device"] = tr.Device
 
-	app := tr.App
-	if app == "" {
-		app = core.AppName
-	}
-	v := tr.Version
-	if v == "" {
-		v = core.Version
-	}
-	header["app"] = app
-	header["version"] = v
+	// app := tr.App
+	// if app == "" {
+	// 	app = core.AppName
+	// }
+	// v := tr.Version
+	// if v == "" {
+	// 	v = core.Version
+	// }
+	header["app"] = core.AppName
+	header["version"] = core.Version
+	header["tenant"] = tr.Tenant
 
 	body, err := json.Marshal(tr)
 	if err != nil {
