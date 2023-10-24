@@ -5,7 +5,7 @@ import (
 
 	"github.com/asaskevich/EventBus"
 	"github.com/techquest-tech/cronext"
-	"github.com/techquest-tech/gin-shared/pkg/event"
+	"github.com/techquest-tech/gin-shared/pkg/core"
 	"go.uber.org/zap"
 )
 
@@ -27,8 +27,8 @@ type MonitorService interface {
 // }
 
 func SubscribeMonitor(logger *zap.Logger, bus EventBus.Bus, item MonitorService) {
-	bus.SubscribeAsync(event.EventError, item.ReportError, false)
-	bus.SubscribeAsync(event.EventTracing, item.ReportTracing, false)
+	bus.SubscribeAsync(core.EventError, item.ReportError, false)
+	bus.SubscribeAsync(core.EventTracing, item.ReportTracing, false)
 	bus.SubscribeAsync(cronext.EventJobFinished, item.ReportScheduleJob, false)
 	logger.Info("sub monitor service", zap.String("service", fmt.Sprintf("%T", item)))
 }
