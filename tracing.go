@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/auth"
 	"github.com/techquest-tech/gin-shared/pkg/core"
-	"github.com/techquest-tech/gin-shared/pkg/event"
 	"github.com/techquest-tech/gin-shared/pkg/ginshared"
 	"go.uber.org/zap"
 )
@@ -82,7 +81,7 @@ var InitTracingService = func(bus EventBus.Bus, logger *zap.Logger) *TracingRequ
 	logger.Info("tracing service is enabled.")
 	if (sr.Request || sr.Resp) && sr.Console {
 		c := InitConsoleTracingService(sr.Log)
-		sr.Bus.SubscribeAsync(event.EventTracing, c.LogBody, false)
+		sr.Bus.SubscribeAsync(core.EventTracing, c.LogBody, false)
 	}
 	return sr
 }
@@ -166,7 +165,7 @@ func (tr *TracingRequestService) LogfullRequestDetails(c *gin.Context) {
 		fullLogging.Tenant = currentUser.Owner
 	}
 
-	tr.Bus.Publish(event.EventTracing, fullLogging)
+	tr.Bus.Publish(core.EventTracing, fullLogging)
 }
 
 func EnabledTracing() {

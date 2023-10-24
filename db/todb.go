@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/asaskevich/EventBus"
-	"github.com/techquest-tech/gin-shared/pkg/event"
+	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/orm"
 	"github.com/techquest-tech/monitor"
 	"go.uber.org/zap"
@@ -42,7 +42,7 @@ func NewTracingRequestService(db *gorm.DB, logger *zap.Logger) (*TracingRequestS
 }
 
 func SubEventToDB(tr *TracingRequestServiceDBImpl, bus EventBus.Bus) {
-	bus.SubscribeAsync(event.EventTracing, tr.doLogRequestBody, false)
+	bus.SubscribeAsync(core.EventTracing, tr.doLogRequestBody, false)
 }
 
 func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDetails) {
