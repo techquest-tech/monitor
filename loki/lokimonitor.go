@@ -8,8 +8,8 @@ import (
 
 	"github.com/asaskevich/EventBus"
 	"github.com/spf13/viper"
-	"github.com/techquest-tech/cronext"
 	"github.com/techquest-tech/gin-shared/pkg/core"
+	"github.com/techquest-tech/gin-shared/pkg/schedule"
 	"github.com/techquest-tech/lokiclient"
 	"github.com/techquest-tech/monitor"
 	"go.uber.org/zap"
@@ -80,9 +80,10 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	return loki, nil
 }
 
-func (lm *LokiSetting) ReportScheduleJob(req cronext.JobHistory) {
+func (lm *LokiSetting) ReportScheduleJob(req schedule.JobHistory) {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "cronJob"
+	header["job"] = req.Job
 
 	body, _ := json.Marshal(req)
 	lm.ch <- lokiclient.NewPushItem(header, string(body))

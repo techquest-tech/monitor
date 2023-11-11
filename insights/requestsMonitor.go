@@ -7,8 +7,8 @@ import (
 	"github.com/asaskevich/EventBus"
 	"github.com/microsoft/ApplicationInsights-Go/appinsights"
 	"github.com/spf13/viper"
-	"github.com/techquest-tech/cronext"
 	"github.com/techquest-tech/gin-shared/pkg/core"
+	"github.com/techquest-tech/gin-shared/pkg/schedule"
 	"github.com/techquest-tech/monitor"
 	"go.uber.org/zap"
 )
@@ -58,7 +58,7 @@ func InitRequestMonitor(logger *zap.Logger) *ResquestMonitor {
 	return rm
 }
 
-func (appins *ResquestMonitor) ReportScheduleJob(req cronext.JobHistory) {
+func (appins *ResquestMonitor) ReportScheduleJob(req schedule.JobHistory) {
 	status := 200
 	if !req.Succeed {
 		status = 500

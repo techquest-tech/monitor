@@ -7,7 +7,6 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/spf13/viper v1.17.0
-	github.com/techquest-tech/cronext v0.2.1
 	github.com/techquest-tech/gin-shared v0.6.0
 	github.com/techquest-tech/lokiclient v0.1.2
 	go.uber.org/zap v1.26.0
@@ -28,8 +27,6 @@ require (
 	github.com/gin-contrib/cors v1.4.0 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/gin-contrib/zap v0.2.0 // indirect
-	github.com/go-logr/logr v1.2.4 // indirect
-	github.com/go-logr/zapr v1.2.4 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.15.5 // indirect
