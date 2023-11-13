@@ -10,7 +10,6 @@ require (
 	github.com/techquest-tech/gin-shared v0.6.0
 	github.com/techquest-tech/lokiclient v0.1.2
 	go.uber.org/zap v1.26.0
-	gorm.io/datatypes v1.2.0
 	gorm.io/gorm v1.25.5
 )
 
@@ -79,5 +78,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/mysql v1.5.2 // indirect
 	gorm.io/driver/sqlite v1.5.3 // indirect
-	gorm.io/driver/sqlserver v1.5.2 // indirect
 )
