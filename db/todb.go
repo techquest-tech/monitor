@@ -71,3 +71,11 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDeta
 	}
 	tr.Logger.Info("save request details done.", zap.Uint("targetID", req.TargetID))
 }
+
+func EnableDBMonitor() {
+	core.Provide(NewTracingRequestService)
+	core.ProvideStartup(func(dbm *TracingRequestServiceDBImpl, bus EventBus.Bus) core.Startup {
+		SubEventToDB(dbm, bus)
+		return nil
+	})
+}
