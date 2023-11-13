@@ -8,7 +8,6 @@ import (
 	"github.com/techquest-tech/gin-shared/pkg/orm"
 	"github.com/techquest-tech/monitor"
 	"go.uber.org/zap"
-	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -17,11 +16,11 @@ type FullRequestDetails struct {
 	Optionname string `gorm:"size:64"`
 	Uri        string `gorm:"size:256"`
 	Method     string `gorm:"size:16"`
-	Body       datatypes.JSON
+	Body       []byte
 	Durtion    time.Duration
 	Status     int
 	TargetID   uint
-	Resp       datatypes.JSON
+	Resp       []byte
 	ClientIP   string `gorm:"size:64"`
 	UserAgent  string `gorm:"size:256"`
 	Device     string `gorm:"size:64"`
