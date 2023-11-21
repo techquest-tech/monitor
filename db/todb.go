@@ -45,10 +45,31 @@ func SubEventToDB(tr *TracingRequestServiceDBImpl, bus EventBus.Bus) {
 }
 
 func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDetails) {
-	// if req.Body == nil && req.Resp == nil {
-	// 	tr.Logger.Debug("both req & resp is emtpy, ignored.")
-	// 	return
-	// }
+	if req.Body == nil && req.Resp == nil {
+		tr.Logger.Debug("both req & resp is emtpy, ignored.")
+		return
+	}
+
+	if bts, ok := req.Body.([]byte); ok {
+		if resp, ok := req.Resp.([]byte); ok {
+			if len(bts) == 0 && len(resp) == 0 {
+				tr.Logger.Debug("request body is empty, ignored.")
+				return
+			}
+		}
+	}
+
+	if body, ok := req.Body.(string); ok {
+		if body == "" {
+			if resp, ok := req.Resp.(string); ok {
+				if resp == "" {
+					tr.Logger.Debug("request body is empty, ignored.")
+					return
+				}
+			}
+		}
+	}
+
 	model := FullRequestDetails{
 		Optionname: req.Optionname,
 		Uri:        req.Uri,
