@@ -25,10 +25,6 @@ type LokiSetting struct {
 
 func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	loki := &LokiSetting{
-		// AppSettings: monitor.AppSettings{
-		// 	Appname: core.AppName,
-		// 	Version: core.Version,
-		// },
 		FixedHeaders: map[string]string{},
 		Logger:       logger,
 	}
@@ -117,6 +113,8 @@ func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
 	header["ClientIP"] = tr.ClientIP
 	header["UserAgent"] = tr.UserAgent
 	header["Device"] = tr.Device
+	header["Owner"] = tr.Tenant
+	header["operator"] = tr.Operator
 
 	// app := tr.App
 	// if app == "" {

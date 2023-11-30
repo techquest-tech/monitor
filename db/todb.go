@@ -14,6 +14,7 @@ import (
 type FullRequestDetails struct {
 	gorm.Model
 	Optionname string `gorm:"size:64"`
+	Operator   string `gorm:"size:64"`
 	Uri        string `gorm:"size:256"`
 	Method     string `gorm:"size:16"`
 	Body       []byte
@@ -72,6 +73,7 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDeta
 
 	model := FullRequestDetails{
 		Optionname: req.Optionname,
+		Operator:   req.Operator,
 		Uri:        req.Uri,
 		Method:     req.Method,
 		Body:       monitor.ToByte(req.Body),

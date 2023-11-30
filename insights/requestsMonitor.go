@@ -3,6 +3,7 @@ package insights
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/asaskevich/EventBus"
 	"github.com/microsoft/ApplicationInsights-Go/appinsights"
@@ -24,6 +25,7 @@ type ResquestMonitor struct {
 	AppInsightsSettings
 	logger *zap.Logger
 	client appinsights.TelemetryClient
+	Locker *sync.Mutex
 }
 
 func InitRequestMonitor(logger *zap.Logger) *ResquestMonitor {
@@ -33,6 +35,7 @@ func InitRequestMonitor(logger *zap.Logger) *ResquestMonitor {
 	}
 	rm := &ResquestMonitor{
 		logger: logger,
+		Locker: &sync.Mutex{},
 	}
 	settings := viper.Sub("tracing.azure")
 	if settings != nil {
@@ -96,6 +99,9 @@ func (appins *ResquestMonitor) ReportError(err error) {
 }
 
 func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) {
+	appins.Locker.Lock()
+	defer appins.Locker.Unlock()
+
 	client := appins.getClient()
 
 	client.Context().Tags.Operation().SetName(fmt.Sprintf("%s %s", tr.Method, tr.Optionname))
@@ -109,9 +115,10 @@ func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) {
 	t.Properties["version"] = core.Version
 	t.Properties["user-agent"] = tr.UserAgent
 	t.Properties["device"] = tr.Device
-	if tr.Tenant != "" {
-		t.Properties["tenant"] = tr.Tenant
-	}
+	// if tr.Tenant != "" {
+	t.Properties["owner"] = tr.Tenant
+	// }
+	t.Properties["operator"] = tr.Operator
 
 	req := monitor.ToByte(tr.Body)
 	resp := monitor.ToByte(tr.Resp)
