@@ -34,6 +34,7 @@ type TracingDetails struct {
 	UserAgent  string
 	Device     string
 	Tenant     string
+	Operator   string
 	// Props     map[string]interface{}
 }
 
@@ -160,9 +161,11 @@ func (tr *TracingRequestService) LogfullRequestDetails(c *gin.Context) {
 		UserAgent:  c.Request.UserAgent(),
 		Device:     c.GetHeader("deviceID"),
 	}
+
 	if obj, ok := c.Get(auth.KeyUser); ok {
 		currentUser := obj.(*auth.AuthKey)
 		fullLogging.Tenant = currentUser.Owner
+		fullLogging.Operator = currentUser.UserName
 	}
 
 	tr.Bus.Publish(core.EventTracing, fullLogging)
