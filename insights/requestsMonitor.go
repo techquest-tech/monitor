@@ -61,7 +61,7 @@ func InitRequestMonitor(logger *zap.Logger) *ResquestMonitor {
 	return rm
 }
 
-func (appins *ResquestMonitor) ReportScheduleJob(req schedule.JobHistory) {
+func (appins *ResquestMonitor) ReportScheduleJob(req *schedule.JobHistory) {
 	status := 200
 	if !req.Succeed {
 		status = 500

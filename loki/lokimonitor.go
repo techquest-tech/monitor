@@ -76,7 +76,7 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	return loki, nil
 }
 
-func (lm *LokiSetting) ReportScheduleJob(req schedule.JobHistory) {
+func (lm *LokiSetting) ReportScheduleJob(req *schedule.JobHistory) {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "cronJob"
 	header["job"] = req.Job
