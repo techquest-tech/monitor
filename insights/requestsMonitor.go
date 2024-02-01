@@ -144,7 +144,10 @@ func EnabledMonitor() {
 	core.Provide(InitRequestMonitor)
 	// tracing.EnabledTracing()
 	core.ProvideStartup(func(logger *zap.Logger, bus EventBus.Bus, client *ResquestMonitor) core.Startup {
-		monitor.SubscribeMonitor(logger, bus, client)
+		if client != nil {
+			monitor.SubscribeMonitor(logger, bus, client)
+		}
+
 		return nil
 	})
 }

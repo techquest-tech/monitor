@@ -139,7 +139,10 @@ func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
 func EnableLokiMonitor() {
 	core.Provide(InitLokiMonitor)
 	core.ProvideStartup(func(logger *zap.Logger, bus EventBus.Bus, s *LokiSetting) core.Startup {
-		monitor.SubscribeMonitor(logger, bus, s)
+		if s != nil {
+			monitor.SubscribeMonitor(logger, bus, s)
+		}
+
 		return nil
 	})
 }
