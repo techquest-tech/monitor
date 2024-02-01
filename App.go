@@ -18,7 +18,7 @@ type AppSettings struct {
 type MonitorService interface {
 	ReportTracing(tr *TracingDetails)
 	ReportError(err error)
-	ReportScheduleJob(req schedule.JobHistory)
+	ReportScheduleJob(req *schedule.JobHistory)
 }
 
 // type P struct {
