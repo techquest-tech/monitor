@@ -95,7 +95,7 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDeta
 }
 
 func EnableDBMonitor() {
-	orm.AppendEntity(&FullRequestDetails{})
+	// orm.AppendEntity(&FullRequestDetails{})
 	core.Provide(NewTracingRequestService)
 	core.ProvideStartup(func(dbm *TracingRequestServiceDBImpl, bus EventBus.Bus) core.Startup {
 		SubEventToDB(dbm, bus)
