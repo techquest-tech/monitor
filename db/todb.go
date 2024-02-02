@@ -37,7 +37,7 @@ func NewTracingRequestService(db *gorm.DB, logger *zap.Logger) (*TracingRequestS
 		DB:     db,
 		Logger: logger,
 	}
-	orm.AppendEntity(&FullRequestDetails{})
+	// orm.AppendEntity(&FullRequestDetails{})
 	return tr, nil
 }
 
@@ -95,7 +95,7 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDeta
 }
 
 func EnableDBMonitor() {
-	// orm.AppendEntity(&FullRequestDetails{})
+	orm.AppendEntity(&FullRequestDetails{})
 	core.Provide(NewTracingRequestService)
 	core.ProvideStartup(func(dbm *TracingRequestServiceDBImpl, bus EventBus.Bus) core.Startup {
 		SubEventToDB(dbm, bus)
