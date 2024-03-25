@@ -20,6 +20,7 @@ type LokiSetting struct {
 	Config       *lokiclient.PushConfig
 	FixedHeaders map[string]string
 	Logger       *zap.Logger
+	MaxBytes     int
 	ch           chan any
 }
 
@@ -27,6 +28,7 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	loki := &LokiSetting{
 		FixedHeaders: map[string]string{},
 		Logger:       logger,
+		MaxBytes:     262144,
 	}
 	settings := viper.Sub("tracing.loki")
 	if settings == nil {
@@ -37,7 +39,7 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 		URL:      "http://127.0.0.1:3001",
 		Batch:    100,
 		Interval: "10s",
-		Gzip:     false,
+		Gzip:     true,
 	}
 	// logger.Info("connect to loki", zap.String("loki", settings.GetString("URL")))
 	err := settings.Unmarshal(conf)
@@ -113,7 +115,7 @@ func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
 	header["ClientIP"] = tr.ClientIP
 	header["UserAgent"] = tr.UserAgent
 	header["Device"] = tr.Device
-	header["Owner"] = tr.Tenant
+	// header["Owner"] = tr.Tenant
 	header["operator"] = tr.Operator
 
 	// app := tr.App
@@ -133,6 +135,12 @@ func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
 		lm.Logger.Error("marshal details failed.", zap.Error(err))
 		return
 	}
+
+	if len(body) > lm.MaxBytes {
+		lm.Logger.Info("body truncated.", zap.Int("raw", len(body)))
+		body = body[:lm.MaxBytes-1]
+	}
+
 	lm.ch <- lokiclient.NewPushItem(header, string(body))
 }
 
