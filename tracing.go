@@ -84,6 +84,7 @@ var InitTracingService = func(bus EventBus.Bus, logger *zap.Logger) *TracingRequ
 		c := InitConsoleTracingService(sr.Log)
 		sr.Bus.SubscribeAsync(core.EventTracing, c.LogBody, false)
 	}
+	ginshared.RegisterComponent(sr)
 	return sr
 }
 
@@ -173,13 +174,13 @@ func (tr *TracingRequestService) LogfullRequestDetails(c *gin.Context) {
 
 func EnabledTracing() {
 	core.Provide(InitTracingService)
-	core.ProvideStartup(func(p core.OptionalParam[*TracingRequestService]) core.Startup {
-		return p.P
-	})
-	core.GetContainer().Invoke(func(p core.OptionalParam[*TracingRequestService]) {
-		if p.P != nil {
-			ginshared.RegisterComponent(p.P)
-			// zap.L().Info("tracy is enabled.")
-		}
-	})
+	// core.ProvideStartup(func(p core.OptionalParam[*TracingRequestService]) core.Startup {
+	// 	return p.P
+	// })
+	// core.GetContainer().Invoke(func(p core.OptionalParam[*TracingRequestService]) {
+	// 	if p.P != nil {
+	// 		ginshared.RegisterComponent(p.P)
+	// 		// zap.L().Info("tracy is enabled.")
+	// 	}
+	// })
 }
