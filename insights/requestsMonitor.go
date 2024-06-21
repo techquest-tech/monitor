@@ -92,6 +92,9 @@ func (appins *ResquestMonitor) getClient() appinsights.TelemetryClient {
 }
 
 func (appins *ResquestMonitor) ReportError(err error) {
+	appins.Locker.Lock()
+	defer appins.Locker.Unlock()
+
 	client := appins.getClient()
 	trace := appinsights.NewTraceTelemetry(err.Error(), appinsights.Error)
 	client.Track(trace)
