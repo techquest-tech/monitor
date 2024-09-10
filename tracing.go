@@ -149,6 +149,10 @@ func (tr *TracingRequestService) LogfullRequestDetails(c *gin.Context) {
 
 	respcache := writer.cache.Bytes()
 
+	if index := strings.IndexRune(matchedUrl, '?'); index > 0 {
+		matchedUrl = matchedUrl[:index]
+	}
+
 	fullLogging := &TracingDetails{
 		Optionname: matchedUrl,
 		Uri:        uri,
