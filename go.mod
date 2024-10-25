@@ -2,22 +2,20 @@ module github.com/techquest-tech/monitor
 
 go 1.22.0
 
-toolchain go1.23.1
-
 require (
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
 	github.com/carlmjohnson/requests v0.24.2
 	github.com/gin-gonic/gin v1.10.0
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/spf13/viper v1.19.0
-	github.com/techquest-tech/gin-shared v0.8.16
+	github.com/techquest-tech/gin-shared v0.10.7
 	github.com/techquest-tech/lokiclient v0.1.2
 	go.uber.org/zap v1.27.0
 	gorm.io/gorm v1.25.12
 )
 
 require (
-	code.cloudfoundry.org/clock v1.13.0 // indirect
+	code.cloudfoundry.org/clock v0.0.0-20180518195852-02e53af36e6c // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Depado/ginprom v1.8.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -40,9 +38,10 @@ require (
 	github.com/go-redis/cache/v9 v9.0.0 // indirect
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
-	github.com/gofrs/uuid v4.4.0+incompatible // indirect
+	github.com/gofrs/uuid v3.3.0+incompatible // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
@@ -68,6 +67,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sagikazarmark/locafero v0.6.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
+	github.com/samber/lo v1.47.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.7.0 // indirect
