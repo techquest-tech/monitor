@@ -2,7 +2,9 @@ package monitor
 
 import (
 	"bytes"
+	"context"
 	"io"
+	"math"
 	"strings"
 	"time"
 
@@ -58,6 +60,29 @@ type TracingRequestService struct {
 	Excluded []string
 }
 
+func (tr *TracingRequestService) ShouldLogReq(ctx context.Context, uri string) bool {
+	matched := len(tr.Included) == 0
+	for _, item := range tr.Included {
+		if uri == item {
+			matched = true
+			break
+		}
+	}
+	if matched {
+		for _, item := range tr.Excluded {
+			if uri == item {
+				return false
+			}
+		}
+	}
+	return matched
+}
+func (tr *TracingRequestService) LogRequest(ctx context.Context, req *TracingDetails) error {
+	// tr.Bus.Publish(core.EventTracing, req)
+	TracingAdaptor.Push(req)
+	return nil
+}
+
 func (tr *TracingRequestService) Priority() int { return 5 }
 
 func (tr *TracingRequestService) OnEngineInited(r *gin.Engine) error {
@@ -107,13 +132,7 @@ func (tr *TracingRequestService) LogfullRequestDetails(c *gin.Context) {
 		matchedUrl = uri
 	}
 
-	matched := len(tr.Included) == 0
-	for _, item := range tr.Included {
-		if matchedUrl == item {
-			matched = true
-			break
-		}
-	}
+	matched := tr.ShouldLogReq(c.Request.Context(), matchedUrl)
 	if matched {
 		for _, item := range tr.Excluded {
 			if matchedUrl == item {
@@ -173,18 +192,12 @@ func (tr *TracingRequestService) LogfullRequestDetails(c *gin.Context) {
 		fullLogging.Operator = currentUser.UserName
 	}
 
-	tr.Bus.Publish(core.EventTracing, fullLogging)
+	tr.LogRequest(c.Request.Context(), fullLogging)
 }
+
+var TracingAdaptor = core.NewChanAdaptor[*TracingDetails](math.MaxInt16)
 
 func EnabledTracing() {
 	core.Provide(InitTracingService)
-	// core.ProvideStartup(func(p core.OptionalParam[*TracingRequestService]) core.Startup {
-	// 	return p.P
-	// })
-	// core.GetContainer().Invoke(func(p core.OptionalParam[*TracingRequestService]) {
-	// 	if p.P != nil {
-	// 		ginshared.RegisterComponent(p.P)
-	// 		// zap.L().Info("tracy is enabled.")
-	// 	}
-	// })
+	core.InvokeAsyncOnServiceStarted(TracingAdaptor.Start)
 }
