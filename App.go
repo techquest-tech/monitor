@@ -31,6 +31,14 @@ func SubscribeMonitor(logger *zap.Logger, bus EventBus.Bus, item MonitorService)
 	bus.SubscribeAsync(core.EventTracing, item.ReportTracing, false)
 	bus.SubscribeAsync(schedule.EventJobFinished, item.ReportScheduleJob, false)
 	logger.Info("sub monitor service", zap.String("service", fmt.Sprintf("%T", item)))
+
+	ch := TracingAdaptor.Subscripter("")
+	fn := func() {
+		for req := range ch {
+			item.ReportTracing(req)
+		}
+	}
+	go fn()
 }
 
 // func Enabled() {
