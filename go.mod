@@ -8,10 +8,15 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/spf13/viper v1.19.0
-	github.com/techquest-tech/gin-shared v0.10.8
+	github.com/techquest-tech/gin-shared v0.10.9
 	github.com/techquest-tech/lokiclient v0.1.4
 	go.uber.org/zap v1.27.0
 	gorm.io/gorm v1.25.12
+)
+
+require (
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 )
 
 require (
@@ -72,9 +77,10 @@ require (
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.7.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/stretchr/testify v1.9.0
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/techquest-tech/gobatch v0.1.6 // indirect
-	github.com/thanhpk/randstr v1.0.6 // indirect
+	github.com/thanhpk/randstr v1.0.6
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	github.com/unrolled/secure v1.17.0 // indirect

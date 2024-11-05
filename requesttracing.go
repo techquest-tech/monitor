@@ -56,7 +56,8 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 			fullLogging.Status = res.StatusCode
 		}
 
-		core.Bus.Publish(core.EventTracing, fullLogging)
+		// core.Bus.Publish(core.EventTracing, fullLogging)
+		TracingAdaptor.Push(fullLogging)
 		return
 	})
 }

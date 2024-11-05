@@ -27,10 +27,14 @@ type MonitorService interface {
 // }
 
 func SubscribeMonitor(logger *zap.Logger, bus EventBus.Bus, item MonitorService) {
-	bus.SubscribeAsync(core.EventError, item.ReportError, false)
-	bus.SubscribeAsync(core.EventTracing, item.ReportTracing, false)
-	bus.SubscribeAsync(schedule.EventJobFinished, item.ReportScheduleJob, false)
+	// bus.SubscribeAsync(core.EventError, item.ReportError, false)
+	// bus.SubscribeAsync(core.EventTracing, item.ReportTracing, false)
+	// bus.SubscribeAsync(schedule.EventJobFinished, item.ReportScheduleJob, false)
 	logger.Info("sub monitor service", zap.String("service", fmt.Sprintf("%T", item)))
+
+	TracingAdaptor.Subscripter("", item.ReportTracing)
+	schedule.JobHistoryAdaptor.Subscripter("", item.ReportScheduleJob)
+	core.ErrorAdaptor.Subscripter("", item.ReportError)
 }
 
 // func Enabled() {
