@@ -115,17 +115,7 @@ func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
 	header["ClientIP"] = tr.ClientIP
 	header["UserAgent"] = tr.UserAgent
 	header["Device"] = tr.Device
-	// header["Owner"] = tr.Tenant
 	header["operator"] = tr.Operator
-
-	// app := tr.App
-	// if app == "" {
-	// 	app = core.AppName
-	// }
-	// v := tr.Version
-	// if v == "" {
-	// 	v = core.Version
-	// }
 	header["app"] = core.AppName
 	header["version"] = core.Version
 	header["tenant"] = tr.Tenant
