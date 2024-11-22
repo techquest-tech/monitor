@@ -27,7 +27,7 @@ func ToByte(obj any) []byte {
 	return result
 }
 
-func (tr *ConsoleTracing) LogBody(req *TracingDetails) {
+func (tr *ConsoleTracing) LogBody(req *TracingDetails) error {
 	log := tr.Log.With(zap.String("method", req.Method), zap.String("uri", req.Uri))
 	if req.Body != "" {
 		log.Debug("req", zap.ByteString("req body", ToByte(req.Body)))
@@ -35,6 +35,7 @@ func (tr *ConsoleTracing) LogBody(req *TracingDetails) {
 	if req.Resp != "" {
 		log.Debug("resp", zap.Int("status code", req.Status), zap.ByteString("resp", ToByte(req.Resp)))
 	}
+	return nil
 }
 
 func InitConsoleTracingService(log *zap.Logger) *ConsoleTracing {

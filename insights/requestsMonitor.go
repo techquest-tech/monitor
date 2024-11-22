@@ -61,7 +61,7 @@ func InitRequestMonitor(logger *zap.Logger) *ResquestMonitor {
 	return rm
 }
 
-func (appins *ResquestMonitor) ReportScheduleJob(req *schedule.JobHistory) {
+func (appins *ResquestMonitor) ReportScheduleJob(req *schedule.JobHistory) error {
 	status := 200
 	if !req.Succeed {
 		status = 500
@@ -74,6 +74,7 @@ func (appins *ResquestMonitor) ReportScheduleJob(req *schedule.JobHistory) {
 		Status:  status,
 	}
 	appins.ReportTracing(details)
+	return nil
 }
 
 func (appins *ResquestMonitor) getClient() appinsights.TelemetryClient {
@@ -91,7 +92,7 @@ func (appins *ResquestMonitor) getClient() appinsights.TelemetryClient {
 	return appins.client
 }
 
-func (appins *ResquestMonitor) ReportError(err error) {
+func (appins *ResquestMonitor) ReportError(err error) error {
 	appins.Locker.Lock()
 	defer appins.Locker.Unlock()
 
@@ -99,9 +100,10 @@ func (appins *ResquestMonitor) ReportError(err error) {
 	trace := appinsights.NewTraceTelemetry(err.Error(), appinsights.Error)
 	client.Track(trace)
 	appins.logger.Debug("tracing error done", zap.Error(err))
+	return nil
 }
 
-func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) {
+func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) error {
 	appins.Locker.Lock()
 	defer appins.Locker.Unlock()
 
@@ -141,6 +143,7 @@ func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) {
 
 	client.Track(t)
 	appins.logger.Debug("submit tracing done.")
+	return nil
 }
 
 func EnabledMonitor() {

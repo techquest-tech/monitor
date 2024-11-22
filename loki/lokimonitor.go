@@ -78,16 +78,17 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	return loki, nil
 }
 
-func (lm *LokiSetting) ReportScheduleJob(req *schedule.JobHistory) {
+func (lm *LokiSetting) ReportScheduleJob(req *schedule.JobHistory) error {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "cronJob"
 	header["job"] = req.Job
 
 	body, _ := json.Marshal(req)
 	lm.ch <- lokiclient.NewPushItem(header, string(body))
+	return nil
 }
 
-func (lm *LokiSetting) ReportError(err error) {
+func (lm *LokiSetting) ReportError(err error) error {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "error"
 	header["app"] = core.AppName
@@ -95,6 +96,7 @@ func (lm *LokiSetting) ReportError(err error) {
 
 	body := err.Error()
 	lm.ch <- lokiclient.NewPushItem(header, body)
+	return err
 }
 
 func (lm *LokiSetting) cloneFixedHeader() map[string]string {
@@ -105,7 +107,7 @@ func (lm *LokiSetting) cloneFixedHeader() map[string]string {
 	return out
 }
 
-func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
+func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) error {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "tracing"
 	header["Optionname"] = tr.Optionname
@@ -123,7 +125,7 @@ func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
 	body, err := json.Marshal(tr)
 	if err != nil {
 		lm.Logger.Error("marshal details failed.", zap.Error(err))
-		return
+		return err
 	}
 
 	if len(body) > lm.MaxBytes {
@@ -132,6 +134,7 @@ func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) {
 	}
 
 	lm.ch <- lokiclient.NewPushItem(header, string(body))
+	return nil
 }
 
 func EnableLokiMonitor() {
