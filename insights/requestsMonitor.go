@@ -5,7 +5,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/asaskevich/EventBus"
 	"github.com/microsoft/ApplicationInsights-Go/appinsights"
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
@@ -149,9 +148,9 @@ func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) error {
 func EnabledMonitor() {
 	core.Provide(InitRequestMonitor)
 	// tracing.EnabledTracing()
-	core.ProvideStartup(func(logger *zap.Logger, bus EventBus.Bus, client *ResquestMonitor) core.Startup {
+	core.ProvideStartup(func(logger *zap.Logger, client *ResquestMonitor) core.Startup {
 		if client != nil {
-			monitor.SubscribeMonitor(logger, bus, client)
+			monitor.SubscribeMonitor(logger, client)
 		}
 
 		return nil

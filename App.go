@@ -3,7 +3,6 @@ package monitor
 import (
 	"fmt"
 
-	"github.com/asaskevich/EventBus"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/schedule"
 	"go.uber.org/zap"
@@ -26,7 +25,7 @@ type MonitorService interface {
 // 	services []MonitorService `group:"monitor"`
 // }
 
-func SubscribeMonitor(logger *zap.Logger, bus EventBus.Bus, item MonitorService) {
+func SubscribeMonitor(logger *zap.Logger, item MonitorService) {
 	// bus.SubscribeAsync(core.EventError, item.ReportError, false)
 	// bus.SubscribeAsync(core.EventTracing, item.ReportTracing, false)
 	// bus.SubscribeAsync(schedule.EventJobFinished, item.ReportScheduleJob, false)
