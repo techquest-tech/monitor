@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/asaskevich/EventBus"
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/schedule"
@@ -139,9 +138,9 @@ func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) error {
 
 func EnableLokiMonitor() {
 	core.Provide(InitLokiMonitor)
-	core.ProvideStartup(func(logger *zap.Logger, bus EventBus.Bus, s *LokiSetting) core.Startup {
+	core.ProvideStartup(func(logger *zap.Logger, s *LokiSetting) core.Startup {
 		if s != nil {
-			monitor.SubscribeMonitor(logger, bus, s)
+			monitor.SubscribeMonitor(logger, s)
 		}
 
 		return nil
