@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,7 +38,12 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 			// reqcache := make([]byte, 1024)
 			reqcache, _ := io.ReadAll(req.Body)
 			req.Body = io.NopCloser(bytes.NewBuffer(reqcache))
-			fullLogging.Body = string(reqcache)
+			reqbody := string(reqcache)
+			ct := req.Header.Get("Content-Type")
+			if req.Method == "POST" && ct == "application/x-www-form-urlencoded" {
+				reqbody, _ = url.QueryUnescape(reqbody)
+			}
+			fullLogging.Body = reqbody
 		}
 
 		res, err = rt.RoundTrip(req)

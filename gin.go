@@ -3,6 +3,7 @@ package monitor
 import (
 	"bytes"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -57,9 +58,16 @@ func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
 	}
 
 	if tr.Service.Request && matched {
-		if c.Request.Body != nil {
+		if c.Request.Body != nil { //TODO: check content-length, if too large, should skip
 			reqcache, _ = io.ReadAll(c.Request.Body)
 			c.Request.Body = io.NopCloser(bytes.NewBuffer(reqcache))
+			ct := c.Request.Header.Get("Content-Type")
+			if ct == "application/x-www-form-urlencoded" {
+				reqboy, err := url.QueryUnescape(string(reqcache))
+				if err == nil {
+					reqcache = []byte(reqboy)
+				}
+			}
 		}
 	}
 
