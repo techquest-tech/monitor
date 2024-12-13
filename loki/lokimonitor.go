@@ -51,7 +51,10 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	//random an ID
 	// rand.Seed(time.Now().Unix())
 
-	ctx := context.TODO()
+	ctx, canel := context.WithCancel(context.TODO())
+
+	core.OnServiceStopping(core.SystenEvent(canel))
+
 	ch, err := conf.NewClient(ctx)
 	if err != nil {
 		return nil, err
