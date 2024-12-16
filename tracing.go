@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/ginshared"
-	"github.com/techquest-tech/gin-shared/pkg/schedule"
 	"go.uber.org/zap"
 )
 
@@ -116,7 +115,7 @@ func init() {
 }
 
 func EnabledTracing() {
-	core.InvokeAsyncOnServiceStarted(TracingAdaptor.Start)
-	core.InvokeAsyncOnServiceStarted(schedule.JobHistoryAdaptor.Start)
-	core.InvokeAsyncOnServiceStarted(core.ErrorAdaptor.Start)
+	// core.InvokeAsyncOnServiceStarted(TracingAdaptor.Start)
+	// core.InvokeAsyncOnServiceStarted(schedule.JobHistoryAdaptor.Start)
+	// core.InvokeAsyncOnServiceStarted(core.ErrorAdaptor.Start)
 }
