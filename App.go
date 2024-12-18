@@ -16,7 +16,7 @@ type AppSettings struct {
 
 type MonitorService interface {
 	ReportTracing(tr *TracingDetails) error
-	ReportError(err error) error
+	ReportError(core.ErrorReport) error
 	ReportScheduleJob(req *schedule.JobHistory) error
 }
 
@@ -26,16 +26,9 @@ type MonitorService interface {
 // }
 
 func SubscribeMonitor(logger *zap.Logger, item MonitorService) {
-	// bus.SubscribeAsync(core.EventError, item.ReportError, false)
-	// bus.SubscribeAsync(core.EventTracing, item.ReportTracing, false)
-	// bus.SubscribeAsync(schedule.EventJobFinished, item.ReportScheduleJob, false)
-	logger.Info("sub monitor service", zap.String("service", fmt.Sprintf("%T", item)))
-
-	TracingAdaptor.Subscripter("", item.ReportTracing)
-	schedule.JobHistoryAdaptor.Subscripter("", item.ReportScheduleJob)
-	core.ErrorAdaptor.Subscripter("", item.ReportError)
+	receiver := fmt.Sprintf("%T", item)
+	logger.Info("sub monitor service", zap.String("service", receiver))
+	TracingAdaptor.Subscripter(receiver, item.ReportTracing)
+	schedule.JobHistoryAdaptor.Subscripter(receiver, item.ReportScheduleJob)
+	core.ErrorAdaptor.Subscripter(receiver, item.ReportError)
 }
-
-// func Enabled() {
-// 	core.ProvideStartup(subscribeMonitor)
-// }

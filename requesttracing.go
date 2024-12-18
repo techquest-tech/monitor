@@ -52,12 +52,27 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 		fullLogging.Durtion = dur
 		if err != nil {
 			wrapError := fmt.Errorf("requst to %s, resp err %v", fullLogging.Uri, err)
-			core.Bus.Publish(core.EventError, wrapError)
+			// core.Bus.Publish(core.EventError, wrapError)
 			fullLogging.Resp = "error:" + err.Error()
+			core.ErrorAdaptor.Push(core.ErrorReport{
+				Error: wrapError,
+				Uri:   fullLogging.Uri,
+			})
 		} else {
 			respdetails, err := httputil.DumpResponse(res, true)
 			if err == nil && len(respdetails) > 0 {
 				fullLogging.Resp = string(respdetails)
+			}
+			if err != nil || res.StatusCode >= 400 {
+				rr := core.ErrorReport{
+					Error:     err,
+					Uri:       fullLogging.Uri,
+					FullStack: respdetails,
+				}
+				if rr.Error == nil {
+					rr.Error = fmt.Errorf("res unexpected status code %d", res.StatusCode)
+				}
+				core.ErrorAdaptor.Push(rr)
 			}
 			fullLogging.Status = res.StatusCode
 		}

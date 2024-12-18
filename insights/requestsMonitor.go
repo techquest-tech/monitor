@@ -91,14 +91,14 @@ func (appins *ResquestMonitor) getClient() appinsights.TelemetryClient {
 	return appins.client
 }
 
-func (appins *ResquestMonitor) ReportError(err error) error {
+func (appins *ResquestMonitor) ReportError(rr core.ErrorReport) error {
 	appins.Locker.Lock()
 	defer appins.Locker.Unlock()
 
 	client := appins.getClient()
-	trace := appinsights.NewTraceTelemetry(err.Error(), appinsights.Error)
+	trace := appinsights.NewTraceTelemetry(rr.Error.Error(), appinsights.Error)
 	client.Track(trace)
-	appins.logger.Debug("tracing error done", zap.Error(err))
+	appins.logger.Debug("tracing error done", zap.Error(rr.Error))
 	return nil
 }
 

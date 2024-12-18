@@ -90,15 +90,17 @@ func (lm *LokiSetting) ReportScheduleJob(req *schedule.JobHistory) error {
 	return nil
 }
 
-func (lm *LokiSetting) ReportError(err error) error {
+func (lm *LokiSetting) ReportError(rr core.ErrorReport) error {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "error"
 	header["app"] = core.AppName
 	header["version"] = core.Version
+	header["uri"] = rr.Uri
+	header["message"] = rr.Error.Error()
 
-	body := err.Error()
+	body := string(rr.FullStack)
 	lm.ch <- lokiclient.NewPushItem(header, body)
-	return err
+	return nil
 }
 
 func (lm *LokiSetting) cloneFixedHeader() map[string]string {
