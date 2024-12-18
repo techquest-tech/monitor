@@ -8,7 +8,7 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/spf13/viper v1.19.0
-	github.com/techquest-tech/gin-shared v0.10.9
+	github.com/techquest-tech/gin-shared v0.10.13
 	github.com/techquest-tech/lokiclient v0.1.4
 	go.uber.org/zap v1.27.0
 	gorm.io/gorm v1.25.12
@@ -39,7 +39,7 @@ require (
 	github.com/gin-contrib/zap v1.1.4 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.22.1 // indirect
+	github.com/go-playground/validator/v10 v10.23.0 // indirect
 	github.com/go-redis/cache/v9 v9.0.0 // indirect
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
@@ -102,5 +102,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/mysql v1.5.7 // indirect
 	gorm.io/driver/sqlite v1.5.6 // indirect
-	gorm.io/driver/sqlserver v1.5.3 // indirect
+	gorm.io/driver/sqlserver v1.5.4 // indirect
 )
