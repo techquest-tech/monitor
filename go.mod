@@ -5,7 +5,6 @@ go 1.23.0
 toolchain go1.24.1
 
 require (
-	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef
 	github.com/carlmjohnson/requests v0.24.3
 	github.com/gin-gonic/gin v1.10.0
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
@@ -17,6 +16,7 @@ require (
 )
 
 require (
+	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
