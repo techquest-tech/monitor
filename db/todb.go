@@ -3,7 +3,6 @@ package db
 import (
 	"time"
 
-	"github.com/asaskevich/EventBus"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/orm"
 	"github.com/techquest-tech/monitor"
@@ -41,21 +40,22 @@ func NewTracingRequestService(db *gorm.DB, logger *zap.Logger) (*TracingRequestS
 	return tr, nil
 }
 
-func SubEventToDB(tr *TracingRequestServiceDBImpl, bus EventBus.Bus) {
-	bus.SubscribeAsync(core.EventTracing, tr.doLogRequestBody, false)
-}
+// func SubEventToDB(tr *TracingRequestServiceDBImpl, bus EventBus.Bus) {
+// 	// bus.SubscribeAsync(core.EventTracing, tr.doLogRequestBody, false)
+// 	monitor.TracingAdaptor.Subscripter("db", tr.doLogRequestBody)
+// }
 
-func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDetails) {
+func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDetails) error {
 	if req.Body == nil && req.Resp == nil {
 		tr.Logger.Debug("both req & resp is emtpy, ignored.")
-		return
+		return nil
 	}
 
 	if bts, ok := req.Body.([]byte); ok {
 		if resp, ok := req.Resp.([]byte); ok {
 			if len(bts) == 0 && len(resp) == 0 {
 				tr.Logger.Debug("request body is empty, ignored.")
-				return
+				return nil
 			}
 		}
 	}
@@ -65,7 +65,7 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDeta
 			if resp, ok := req.Resp.(string); ok {
 				if resp == "" {
 					tr.Logger.Debug("request body is empty, ignored.")
-					return
+					return nil
 				}
 			}
 		}
@@ -89,16 +89,17 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDeta
 	err := tr.DB.Save(&model).Error
 	if err != nil {
 		tr.Logger.Error("save reqest failed", zap.Error(err))
-		return
+		return err
 	}
 	tr.Logger.Info("save request details done.", zap.Uint("targetID", req.TargetID))
+	return nil
 }
 
 func EnableDBMonitor() {
 	orm.AppendEntity(&FullRequestDetails{})
 	core.Provide(NewTracingRequestService)
-	core.ProvideStartup(func(dbm *TracingRequestServiceDBImpl, bus EventBus.Bus) core.Startup {
-		SubEventToDB(dbm, bus)
+	core.ProvideStartup(func(dbm *TracingRequestServiceDBImpl) core.Startup {
+		monitor.TracingAdaptor.Subscripter("db", dbm.doLogRequestBody)
 		return nil
 	})
 }
