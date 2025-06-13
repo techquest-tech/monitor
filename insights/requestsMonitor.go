@@ -60,13 +60,13 @@ func InitRequestMonitor(logger *zap.Logger) *ResquestMonitor {
 	return rm
 }
 
-func (appins *ResquestMonitor) ReportScheduleJob(req *schedule.JobHistory) error {
+func (appins *ResquestMonitor) ReportScheduleJob(req schedule.JobHistory) error {
 	status := 200
 	if !req.Succeed {
 		status = 500
 	}
 
-	details := &monitor.TracingDetails{
+	details := monitor.TracingDetails{
 		Uri:     req.Job,
 		Method:  "Cron",
 		Durtion: req.Duration,
@@ -102,7 +102,7 @@ func (appins *ResquestMonitor) ReportError(rr core.ErrorReport) error {
 	return nil
 }
 
-func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) error {
+func (appins *ResquestMonitor) ReportTracing(tr monitor.TracingDetails) error {
 	appins.Locker.Lock()
 	defer appins.Locker.Unlock()
 

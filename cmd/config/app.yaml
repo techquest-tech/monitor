@@ -1,0 +1,11 @@
+tracing:
+  console: false
+  request: true
+  resp: true
+  # Included:
+  # -
+  excluded:
+    - /healthz
+
+  loki:
+    URL: http://192.168.176.87:3100

@@ -20,7 +20,7 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 	}
 	return requests.RoundTripFunc(func(req *http.Request) (res *http.Response, err error) {
 		start := time.Now()
-		fullLogging := &TracingDetails{
+		fullLogging := TracingDetails{
 			Method:    req.Method,
 			UserAgent: req.UserAgent(),
 		}
