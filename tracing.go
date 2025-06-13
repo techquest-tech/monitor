@@ -101,7 +101,7 @@ var InitTracingService = func(logger *zap.Logger) *TracingRequestService {
 	return sr
 }
 
-var TracingAdaptor = core.NewChanAdaptor[*TracingDetails](math.MaxInt16)
+var TracingAdaptor = core.NewChanAdaptor[TracingDetails](math.MaxInt16)
 
 func init() {
 	core.Provide(InitTracingService)

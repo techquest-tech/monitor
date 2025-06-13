@@ -45,7 +45,7 @@ func NewTracingRequestService(db *gorm.DB, logger *zap.Logger) (*TracingRequestS
 // 	monitor.TracingAdaptor.Subscripter("db", tr.doLogRequestBody)
 // }
 
-func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req *monitor.TracingDetails) error {
+func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req monitor.TracingDetails) error {
 	if req.Body == nil && req.Resp == nil {
 		tr.Logger.Debug("both req & resp is emtpy, ignored.")
 		return nil

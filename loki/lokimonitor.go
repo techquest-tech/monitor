@@ -80,7 +80,7 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	return loki, nil
 }
 
-func (lm *LokiSetting) ReportScheduleJob(req *schedule.JobHistory) error {
+func (lm *LokiSetting) ReportScheduleJob(req schedule.JobHistory) error {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "cronJob"
 	header["job"] = req.Job
@@ -111,7 +111,7 @@ func (lm *LokiSetting) cloneFixedHeader() map[string]string {
 	return out
 }
 
-func (lm *LokiSetting) ReportTracing(tr *monitor.TracingDetails) error {
+func (lm *LokiSetting) ReportTracing(tr monitor.TracingDetails) error {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "tracing"
 	header["Optionname"] = tr.Optionname
