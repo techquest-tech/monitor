@@ -12,23 +12,23 @@ import (
 )
 
 var (
-	tracing = &RedisAdaptor[monitor.TracingDetails]{
+	tracing = &MessagingAdaptor[monitor.TracingDetails]{
 		Topic:        "monitor.tracing",
 		ChanAdaaptor: monitor.TracingAdaptor,
 	}
 
-	jobReport = &RedisAdaptor[schedule.JobHistory]{
+	jobReport = &MessagingAdaptor[schedule.JobHistory]{
 		Topic:        "monitor.schedule",
 		ChanAdaaptor: schedule.JobHistoryAdaptor,
 	}
-	errorReport = &RedisAdaptor[core.ErrorReport]{
+	errorReport = &MessagingAdaptor[core.ErrorReport]{
 		Topic:        "monitor.error",
 		ChanAdaaptor: core.ErrorAdaptor,
 	}
 )
 
 // redis monitor bridge, monitor data to redis first, then via redis adaptor to real monitor persist.
-func EnabledRedisBridge() {
+func EnabledMessagingBridge() {
 	core.ProvideStartup(func(logger *zap.Logger, service messaging.MessagingService) core.Startup {
 		tracing.AsBridge(service)
 		jobReport.AsBridge(service)
@@ -41,7 +41,7 @@ func EnabledRedisBridge() {
 
 func RunAsAdaptor() error {
 	return core.GetContainer().Invoke(func(logger *zap.Logger, service messaging.MessagingService, _ core.Startups) {
-		ctx := context.Background()
+		ctx := core.RootCtx()
 		consumer := "monitor-adaptor"
 
 		service.Sub(ctx, tracing.Topic, consumer, tracing.Adaptor)
@@ -51,17 +51,17 @@ func RunAsAdaptor() error {
 	})
 }
 
-type RedisAdaptor[T any] struct {
+type MessagingAdaptor[T any] struct {
 	ChanAdaaptor *core.ChanAdaptor[T]
 	Topic        string
 }
 
-func (r *RedisAdaptor[T]) AsBridge(service messaging.MessagingService) {
+func (r *MessagingAdaptor[T]) AsBridge(service messaging.MessagingService) {
 	r.ChanAdaaptor.Subscripter("redis.bridge", func(data T) error {
 		return service.Pub(context.Background(), r.Topic, data)
 	})
 }
-func (r *RedisAdaptor[T]) Adaptor(ctx context.Context, topic, consumer string, payload []byte) error {
+func (r *MessagingAdaptor[T]) Adaptor(ctx context.Context, topic, consumer string, payload []byte) error {
 	logger := zap.L()
 
 	var tr T
