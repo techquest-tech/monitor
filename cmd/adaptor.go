@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/monitor/datapool"
+	"github.com/techquest-tech/monitor/insights"
 	"github.com/techquest-tech/monitor/messaging"
 )
 
@@ -16,7 +17,7 @@ var adaptor = &cobra.Command{
 	Short: "adaptor for messaging service",
 	Run: func(cmd *cobra.Command, args []string) {
 		// loki.EnableLokiMonitor()
-		// insights.EnabledMonitor()
+		insights.EnabledMonitor()
 		datapool.Enabled2Datapool()
 
 		err := messaging.RunAsAdaptor()

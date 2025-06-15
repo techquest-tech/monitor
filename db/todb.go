@@ -46,41 +46,41 @@ func NewTracingRequestService(db *gorm.DB, logger *zap.Logger) (*TracingRequestS
 // }
 
 func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req monitor.TracingDetails) error {
-	if req.Body == nil && req.Resp == nil {
+	if req.Body == "" && req.Resp == "" {
 		tr.Logger.Debug("both req & resp is emtpy, ignored.")
 		return nil
 	}
 
-	if bts, ok := req.Body.([]byte); ok {
-		if resp, ok := req.Resp.([]byte); ok {
-			if len(bts) == 0 && len(resp) == 0 {
-				tr.Logger.Debug("request body is empty, ignored.")
-				return nil
-			}
-		}
-	}
+	// if bts, ok := req.Body.([]byte); ok {
+	// 	if resp, ok := req.Resp.([]byte); ok {
+	// 		if len(bts) == 0 && len(resp) == 0 {
+	// 			tr.Logger.Debug("request body is empty, ignored.")
+	// 			return nil
+	// 		}
+	// 	}
+	// }
 
-	if body, ok := req.Body.(string); ok {
-		if body == "" {
-			if resp, ok := req.Resp.(string); ok {
-				if resp == "" {
-					tr.Logger.Debug("request body is empty, ignored.")
-					return nil
-				}
-			}
-		}
-	}
+	// if body, ok := req.Body.(string); ok {
+	// 	if body == "" {
+	// 		if resp, ok := req.Resp.(string); ok {
+	// 			if resp == "" {
+	// 				tr.Logger.Debug("request body is empty, ignored.")
+	// 				return nil
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	model := FullRequestDetails{
 		Optionname: req.Optionname,
 		Operator:   req.Operator,
 		Uri:        req.Uri,
 		Method:     req.Method,
-		Body:       monitor.ToByte(req.Body),
+		Body:       []byte(req.Body),
 		Durtion:    req.Durtion,
 		Status:     req.Status,
 		TargetID:   req.TargetID,
-		Resp:       monitor.ToByte(req.Resp),
+		Resp:       []byte(req.Resp),
 		ClientIP:   req.ClientIP,
 		UserAgent:  req.UserAgent,
 		Device:     req.Device,
