@@ -23,11 +23,11 @@ type TracingDetails struct {
 	Optionname string
 	Uri        string
 	Method     string
-	Body       any
+	Body       string
 	Durtion    time.Duration
 	Status     int
 	TargetID   uint
-	Resp       any
+	Resp       string
 	ClientIP   string
 	UserAgent  string
 	Device     string
