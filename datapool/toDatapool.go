@@ -3,6 +3,7 @@ package datapool
 import (
 	"time"
 
+	p "github.com/parquet-go/parquet-go"
 	"github.com/samber/lo"
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
@@ -10,8 +11,6 @@ import (
 	"github.com/techquest-tech/gin-shared/pkg/schedule"
 	"github.com/techquest-tech/monitor"
 	"go.uber.org/zap"
-
-	p "github.com/parquet-go/parquet-go"
 )
 
 // monitor data to datapool, which is in oss with parquet format
@@ -40,38 +39,42 @@ func Enabled2Datapool() {
 				return nil, err
 			}
 		}
-		// tracing
-		trCh := monitor.TracingAdaptor.Sub("monitor-datapool")
-		schemaTracing := parquet.NewParquetDataServiceBySchema(&parquet.ParquetSetting{
+		event, err := parquet.NewOssEventService(logger)
+		if err != nil {
+			logger.Warn("init oss event service error, use default", zap.Error(err))
+			// return nil, err
+			event = &parquet.DefaultPersistEvent{}
+		}
+
+		settings := &parquet.ParquetSetting{
 			BufferDur:  dur,
 			BufferSize: adaptor.BufferSize,
 			Compress:   adaptor.Compress,
 			Folder:     adaptor.CacheFolder,
-			Filename:   "tracing/20060102/150405",
-		}, p.SchemaOf(&monitor.TracingDetails{}), core.ToAnyChan(trCh))
+		}
+		filenamePattern := "%s/20060102/150405"
+		// tracing
+		trCh := monitor.TracingAdaptor.Sub("monitor-datapool")
+		schemaTracing := parquet.NewParquetDataServiceT(settings, filenamePattern, trCh) //.NewParquetDataServiceBySchema(, p.SchemaOf(&monitor.TracingDetails{}), core.ToAnyChan(trCh))
+		schemaTracing.Event = event
 		go schemaTracing.Start(core.RootCtx())
 		// schedule
 		trSche := schedule.JobHistoryAdaptor.Sub("monitor-schedule")
-		scheScheduleJob := parquet.NewParquetDataServiceBySchema(&parquet.ParquetSetting{
-			BufferDur:  dur,
-			BufferSize: adaptor.BufferSize,
-			Compress:   adaptor.Compress,
-			Folder:     adaptor.CacheFolder,
-			Filename:   "schedule/20060102/150405",
-		}, p.SchemaOf(&schedule.JobHistory{}), core.ToAnyChan(trSche))
+		scheScheduleJob := parquet.NewParquetDataServiceT(settings, filenamePattern, trSche)
+		scheScheduleJob.Event = event
 		go scheScheduleJob.Start(core.RootCtx())
 		// error
 		trError := core.ErrorAdaptor.Sub("monitor-error")
 		scheError := parquet.NewParquetDataServiceBySchema(&parquet.ParquetSetting{
-			BufferDur:  dur,
-			BufferSize: adaptor.BufferSize,
-			Compress:   adaptor.Compress,
-			Folder:     adaptor.CacheFolder,
-			Filename:   "errorReport/20060102/150405",
+			BufferDur:       dur,
+			BufferSize:      adaptor.BufferSize,
+			Compress:        adaptor.Compress,
+			Folder:          adaptor.CacheFolder,
+			FilenamePattern: "errorReport/20060102/150405",
 		}, p.SchemaOf(&ErrorReport4Parquet{}), core.ToAnyChan(trError))
 		scheError.Filter = func(msg []any) []any {
 			return lo.Map(msg, func(item any, index int) any {
-				raw := item.(*core.ErrorReport)
+				raw := item.(core.ErrorReport)
 				return ErrorReport4Parquet{
 					Error:     raw.Error.Error(),
 					FullStack: raw.FullStack,
@@ -79,6 +82,7 @@ func Enabled2Datapool() {
 				}
 			})
 		}
+		scheError.Event = event
 
 		go scheError.Start(core.RootCtx())
 
