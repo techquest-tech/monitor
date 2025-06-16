@@ -1,5 +1,10 @@
 log:
-  level: debug
+  level: info
+
+oss:
+  endpoint: oss-cn-hongkong.aliyuncs.com
+  bucket: summation-datapool
+  prefix: dev
 
 tracing:
   console: false
