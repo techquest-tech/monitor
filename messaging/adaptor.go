@@ -1,9 +1,6 @@
 package messaging
 
 import (
-	"context"
-	"encoding/json"
-
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/messaging"
 	"github.com/techquest-tech/gin-shared/pkg/schedule"
@@ -12,16 +9,16 @@ import (
 )
 
 var (
-	tracing = &MessagingAdaptor[monitor.TracingDetails]{
+	tracing = &messaging.MessagingAdaptor[monitor.TracingDetails]{
 		Topic:        "monitor.tracing",
 		ChanAdaaptor: monitor.TracingAdaptor,
 	}
 
-	jobReport = &MessagingAdaptor[schedule.JobHistory]{
+	jobReport = &messaging.MessagingAdaptor[schedule.JobHistory]{
 		Topic:        "monitor.schedule",
 		ChanAdaaptor: schedule.JobHistoryAdaptor,
 	}
-	errorReport = &MessagingAdaptor[core.ErrorReport]{
+	errorReport = &messaging.MessagingAdaptor[core.ErrorReport]{
 		Topic:        "monitor.error",
 		ChanAdaaptor: core.ErrorAdaptor,
 	}
@@ -49,32 +46,4 @@ func RunAsAdaptor() error {
 		service.Sub(ctx, errorReport.Topic, consumer, errorReport.Adaptor)
 		zap.L().Info("messaging service as adaptor enabled")
 	})
-}
-
-type MessagingAdaptor[T any] struct {
-	ChanAdaaptor *core.ChanAdaptor[T]
-	Topic        string
-}
-
-func (r *MessagingAdaptor[T]) AsBridge(service messaging.MessagingService) {
-	r.ChanAdaaptor.Subscripter("redis.bridge", func(data T) error {
-		return service.Pub(context.Background(), r.Topic, data)
-	})
-}
-func (r *MessagingAdaptor[T]) Adaptor(ctx context.Context, topic, consumer string, payload []byte) error {
-	logger := zap.L()
-
-	var tr T
-	if err := json.Unmarshal(payload, &tr); err != nil {
-		logger.Error("unexpected tracing details format", zap.ByteString("payload", payload), zap.Error(err))
-
-		messaging.AbandonedChan <- map[string]any{
-			"topic": topic,
-			"raw":   payload,
-			"error": err.Error(),
-		}
-		return nil
-	}
-	r.ChanAdaaptor.Push(tr)
-	return nil
 }
