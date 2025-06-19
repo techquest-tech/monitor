@@ -115,7 +115,4 @@ func init() {
 }
 
 func EnabledTracing() {
-	// core.InvokeAsyncOnServiceStarted(TracingAdaptor.Start)
-	// core.InvokeAsyncOnServiceStarted(schedule.JobHistoryAdaptor.Start)
-	// core.InvokeAsyncOnServiceStarted(core.ErrorAdaptor.Start)
 }
