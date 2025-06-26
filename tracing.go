@@ -23,11 +23,11 @@ type TracingDetails struct {
 	Optionname string
 	Uri        string
 	Method     string
-	Body       any
+	Body       string
 	Durtion    time.Duration
 	Status     int
 	TargetID   uint
-	Resp       any
+	Resp       string
 	ClientIP   string
 	UserAgent  string
 	Device     string
@@ -101,7 +101,7 @@ var InitTracingService = func(logger *zap.Logger) *TracingRequestService {
 	return sr
 }
 
-var TracingAdaptor = core.NewChanAdaptor[*TracingDetails](math.MaxInt16)
+var TracingAdaptor = core.NewChanAdaptor[TracingDetails](math.MaxInt16)
 
 func init() {
 	core.Provide(InitTracingService)
@@ -115,7 +115,4 @@ func init() {
 }
 
 func EnabledTracing() {
-	// core.InvokeAsyncOnServiceStarted(TracingAdaptor.Start)
-	// core.InvokeAsyncOnServiceStarted(schedule.JobHistoryAdaptor.Start)
-	// core.InvokeAsyncOnServiceStarted(core.ErrorAdaptor.Start)
 }

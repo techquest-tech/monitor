@@ -94,7 +94,7 @@ func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
 		matchedUrl = matchedUrl[:index]
 	}
 
-	fullLogging := &TracingDetails{
+	fullLogging := TracingDetails{
 		Optionname: matchedUrl,
 		Uri:        uri,
 		Method:     method,
@@ -112,6 +112,15 @@ func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
 		currentUser := obj.(*auth.AuthKey)
 		fullLogging.Tenant = currentUser.Owner
 		fullLogging.Operator = currentUser.UserName
+	} else {
+		tenant := c.GetString("owner")
+		if tenant != "" {
+			fullLogging.Tenant = tenant
+		}
+		currentUser := c.GetString("user")
+		if currentUser != "" {
+			fullLogging.Operator = currentUser
+		}
 	}
 
 	TracingAdaptor.Push(fullLogging)
