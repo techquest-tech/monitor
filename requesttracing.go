@@ -12,6 +12,7 @@ import (
 
 	"github.com/carlmjohnson/requests"
 	"github.com/techquest-tech/gin-shared/pkg/core"
+	"go.uber.org/zap"
 )
 
 func LogOutbound(rt http.RoundTripper) http.RoundTripper {
@@ -20,7 +21,7 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 	}
 	return requests.RoundTripFunc(func(req *http.Request) (res *http.Response, err error) {
 		start := time.Now()
-		fullLogging := &TracingDetails{
+		fullLogging := TracingDetails{
 			Method:    req.Method,
 			UserAgent: req.UserAgent(),
 		}
@@ -33,7 +34,9 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 			uri = uri[:index]
 		}
 		fullLogging.Optionname = fmt.Sprintf("[%s]%s", req.Method, uri)
+		logger := zap.L().With(zap.String("Optionname", fullLogging.Optionname))
 
+		logger.Info("outbound request")
 		if req.Body != nil {
 			// reqcache := make([]byte, 1024)
 			reqcache, _ := io.ReadAll(req.Body)
@@ -58,6 +61,7 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 				Error: wrapError,
 				Uri:   fullLogging.Uri,
 			})
+			logger.Error("outbound request error", zap.Error(wrapError))
 		} else {
 			respdetails, err := httputil.DumpResponse(res, true)
 			if err == nil && len(respdetails) > 0 {
@@ -75,6 +79,7 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 				core.ErrorAdaptor.Push(rr)
 			}
 			fullLogging.Status = res.StatusCode
+			logger.Info("outbound request done", zap.Int("status", res.StatusCode), zap.Duration("duration", dur))
 		}
 
 		// core.Bus.Publish(core.EventTracing, fullLogging)

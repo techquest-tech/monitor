@@ -60,13 +60,13 @@ func InitRequestMonitor(logger *zap.Logger) *ResquestMonitor {
 	return rm
 }
 
-func (appins *ResquestMonitor) ReportScheduleJob(req *schedule.JobHistory) error {
+func (appins *ResquestMonitor) ReportScheduleJob(req schedule.JobHistory) error {
 	status := 200
 	if !req.Succeed {
 		status = 500
 	}
 
-	details := &monitor.TracingDetails{
+	details := monitor.TracingDetails{
 		Uri:     req.Job,
 		Method:  "Cron",
 		Durtion: req.Duration,
@@ -102,7 +102,7 @@ func (appins *ResquestMonitor) ReportError(rr core.ErrorReport) error {
 	return nil
 }
 
-func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) error {
+func (appins *ResquestMonitor) ReportTracing(tr monitor.TracingDetails) error {
 	appins.Locker.Lock()
 	defer appins.Locker.Unlock()
 
@@ -124,20 +124,20 @@ func (appins *ResquestMonitor) ReportTracing(tr *monitor.TracingDetails) error {
 	// }
 	t.Properties["operator"] = tr.Operator
 
-	req := monitor.ToByte(tr.Body)
-	resp := monitor.ToByte(tr.Resp)
+	// req := monitor.ToByte(tr.Body)
+	// resp := monitor.ToByte(tr.Resp)
 
-	if len(req) > 0 {
+	if len(tr.Body) > 0 {
 		if appins.Details {
-			t.Properties["req"] = string(req)
+			t.Properties["req"] = string(tr.Body)
 		}
-		t.Measurements["body-size"] = float64(len(req))
+		t.Measurements["body-size"] = float64(len(tr.Body))
 	}
-	if len(resp) > 0 {
+	if len(tr.Resp) > 0 {
 		if appins.Details {
-			t.Properties["resp"] = string(resp)
+			t.Properties["resp"] = string(tr.Resp)
 		}
-		t.Measurements["resp-size"] = float64(len(resp))
+		t.Measurements["resp-size"] = float64(len(tr.Resp))
 	}
 
 	client.Track(t)
