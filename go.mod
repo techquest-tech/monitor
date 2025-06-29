@@ -10,7 +10,7 @@ require (
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/parquet-go/parquet-go v0.25.1
 	github.com/spf13/viper v1.20.1
-	github.com/techquest-tech/gin-shared v0.11.0
+	github.com/techquest-tech/gin-shared v0.11.1
 	github.com/techquest-tech/lokiclient v0.1.4
 	go.uber.org/zap v1.27.0
 	gorm.io/gorm v1.30.0
