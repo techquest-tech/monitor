@@ -13,6 +13,10 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	EnabledAct = false
+)
+
 // monitor data to datapool, which is in oss with parquet format
 type Monitor2Datapool struct {
 	CacheFolder string
@@ -39,29 +43,30 @@ func Enabled2Datapool() {
 				return nil, err
 			}
 		}
-		event, err := parquet.NewOssEventService(logger)
-		if err != nil {
-			logger.Warn("init oss event service error, use default", zap.Error(err))
-			// return nil, err
-			event = &parquet.DefaultPersistEvent{}
-		}
+		// event, err := parquet.NewOssEventService(logger)
+		// if err != nil {
+		// 	logger.Warn("init oss event service error, use default", zap.Error(err))
+		// 	// return nil, err
+		// 	event = &parquet.DefaultPersistEvent{}
+		// }
 
 		settings := &parquet.ParquetSetting{
 			BufferDur:  dur,
 			BufferSize: adaptor.BufferSize,
 			Compress:   adaptor.Compress,
 			Folder:     adaptor.CacheFolder,
+			Ackfile:    EnabledAct,
 		}
 		filenamePattern := "%s/20060102/150405"
 		// tracing
 		trCh := monitor.TracingAdaptor.Sub("monitor-datapool")
 		schemaTracing := parquet.NewParquetDataServiceT(settings, filenamePattern, trCh) //.NewParquetDataServiceBySchema(, p.SchemaOf(&monitor.TracingDetails{}), core.ToAnyChan(trCh))
-		schemaTracing.Event = event
+		// schemaTracing.Event = event
 		go schemaTracing.Start(core.RootCtx())
 		// schedule
 		trSche := schedule.JobHistoryAdaptor.Sub("monitor-schedule")
 		scheScheduleJob := parquet.NewParquetDataServiceT(settings, filenamePattern, trSche)
-		scheScheduleJob.Event = event
+		// scheScheduleJob.Event = event
 		go scheScheduleJob.Start(core.RootCtx())
 		// error
 		trError := core.ErrorAdaptor.Sub("monitor-error")
@@ -82,7 +87,7 @@ func Enabled2Datapool() {
 				}
 			})
 		}
-		scheError.Event = event
+		// scheError.Event = event
 
 		go scheError.Start(core.RootCtx())
 
