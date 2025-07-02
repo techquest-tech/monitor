@@ -84,6 +84,7 @@ func Enabled2Datapool() {
 					Error:     raw.Error.Error(),
 					FullStack: raw.FullStack,
 					Uri:       raw.Uri,
+					HappendAT: raw.HappendAT,
 				}
 			})
 		}
@@ -99,4 +100,5 @@ type ErrorReport4Parquet struct {
 	Uri       string
 	FullStack []byte
 	Error     string
+	HappendAT time.Time
 }

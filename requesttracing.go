@@ -73,6 +73,7 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 					Error:     err,
 					Uri:       fullLogging.Uri,
 					FullStack: respdetails,
+					HappendAT: time.Now(),
 				}
 				if rr.Error == nil {
 					rr.Error = fmt.Errorf("res unexpected status code %d", res.StatusCode)
