@@ -33,6 +33,7 @@ type TracingDetails struct {
 	Device     string
 	Tenant     string
 	Operator   string
+	StartedAt  time.Time
 	// Props     map[string]interface{}
 }
 

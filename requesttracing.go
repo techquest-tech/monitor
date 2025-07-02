@@ -24,6 +24,7 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 		fullLogging := TracingDetails{
 			Method:    req.Method,
 			UserAgent: req.UserAgent(),
+			StartedAt: time.Now(),
 		}
 		uri := req.RequestURI
 		if uri == "" {

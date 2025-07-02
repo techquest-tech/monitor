@@ -29,6 +29,7 @@ func (tr *GinTracingService) OnEngineInited(r *gin.Engine) error {
 // }
 
 func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
+	startAt := time.Now()
 	userAgent := c.Request.UserAgent()
 	if strings.HasPrefix(userAgent, "kube-probe") {
 		c.Next()
@@ -106,6 +107,7 @@ func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
 		ClientIP:   c.ClientIP(),
 		UserAgent:  c.Request.UserAgent(),
 		Device:     c.GetHeader("deviceID"),
+		StartedAt:  startAt,
 	}
 
 	if obj, ok := c.Get(auth.KeyUser); ok {

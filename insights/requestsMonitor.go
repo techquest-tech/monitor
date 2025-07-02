@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/microsoft/ApplicationInsights-Go/appinsights"
 	"github.com/spf13/viper"
@@ -67,10 +68,11 @@ func (appins *ResquestMonitor) ReportScheduleJob(req schedule.JobHistory) error 
 	}
 
 	details := monitor.TracingDetails{
-		Uri:     req.Job,
-		Method:  "Cron",
-		Durtion: req.Duration,
-		Status:  status,
+		Uri:       req.Job,
+		Method:    "Cron",
+		Durtion:   req.Duration,
+		Status:    status,
+		StartedAt: time.Now(),
 	}
 	appins.ReportTracing(details)
 	return nil
