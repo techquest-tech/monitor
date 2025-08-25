@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
@@ -83,6 +84,8 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 func (lm *LokiSetting) ReportScheduleJob(req schedule.JobHistory) error {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "cronJob"
+	header["app"] = req.App
+	header["succeed"] = strconv.FormatBool(req.Succeed)
 	header["job"] = req.Job
 
 	body, _ := json.Marshal(req)
