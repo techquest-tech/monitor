@@ -12,7 +12,7 @@ import (
 
 type FullRequestDetails struct {
 	gorm.Model
-	Optionname string `gorm:"size:64"`
+	Optionname string `gorm:"size:256"`
 	Operator   string `gorm:"size:64"`
 	Uri        string `gorm:"size:256"`
 	Method     string `gorm:"size:16"`
