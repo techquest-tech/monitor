@@ -110,11 +110,12 @@ func drainBody(b io.ReadCloser) (r1, r2 io.ReadCloser, err error) {
 func DumpRespBody(resp *http.Response) ([]byte, error) {
 	var b bytes.Buffer
 	var err error
-	save := resp.Body
+	var save io.ReadCloser
 	savecl := resp.ContentLength
 
 	if resp.Body == nil || resp.ContentLength == 0 {
-		resp.Body = emptyBody
+		// resp.Body = emptyBody
+		return []byte{}, nil
 	} else {
 		save, resp.Body, err = drainBody(resp.Body)
 		if err != nil {
@@ -129,8 +130,8 @@ func DumpRespBody(resp *http.Response) ([]byte, error) {
 
 	resp.Body = save
 	resp.ContentLength = savecl
-	if err != nil {
-		return nil, err
-	}
+	// if err != nil {
+	// 	return nil, err
+	// }
 	return b.Bytes(), nil
 }
