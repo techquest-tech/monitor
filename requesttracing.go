@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"strings"
 	"time"
@@ -64,7 +63,7 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 			})
 			logger.Error("outbound request error", zap.Error(wrapError))
 		} else {
-			respdetails, err := httputil.DumpResponse(res, true)
+			respdetails, err := DumpRespBody(res)
 			if err == nil && len(respdetails) > 0 {
 				fullLogging.Resp = string(respdetails)
 			}
@@ -88,4 +87,50 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 		TracingAdaptor.Push(fullLogging)
 		return
 	})
+}
+
+// emptyBody is an instance of empty reader.
+var emptyBody = io.NopCloser(strings.NewReader(""))
+
+func drainBody(b io.ReadCloser) (r1, r2 io.ReadCloser, err error) {
+	if b == nil || b == http.NoBody {
+		// No copying needed. Preserve the magic sentinel meaning of NoBody.
+		return http.NoBody, http.NoBody, nil
+	}
+	var buf bytes.Buffer
+	if _, err = buf.ReadFrom(b); err != nil {
+		return nil, b, err
+	}
+	if err = b.Close(); err != nil {
+		return nil, b, err
+	}
+	return io.NopCloser(&buf), io.NopCloser(bytes.NewReader(buf.Bytes())), nil
+}
+
+func DumpRespBody(resp *http.Response) ([]byte, error) {
+	var b bytes.Buffer
+	var err error
+	save := resp.Body
+	savecl := resp.ContentLength
+
+	if resp.Body == nil || resp.ContentLength == 0 {
+		resp.Body = emptyBody
+	} else {
+		save, resp.Body, err = drainBody(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	_, err = io.Copy(&b, resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	resp.Body = save
+	resp.ContentLength = savecl
+	if err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
 }
