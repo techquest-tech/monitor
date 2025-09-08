@@ -10,15 +10,15 @@ require (
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/parquet-go/parquet-go v0.25.1
 	github.com/spf13/viper v1.20.1
-	github.com/techquest-tech/gin-shared v0.11.1
+	github.com/techquest-tech/gin-shared v0.11.3
 	github.com/techquest-tech/lokiclient v0.1.4
 	go.uber.org/zap v1.27.0
-	gorm.io/gorm v1.30.0
+	gorm.io/gorm v1.30.3
 )
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.0 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.9.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.1 // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.4.2 // indirect
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef // indirect
@@ -29,7 +29,6 @@ require (
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	golang.org/x/time v0.11.0 // indirect
 )
 
@@ -52,7 +51,7 @@ require (
 	github.com/gin-contrib/zap v1.1.5 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.26.0 // indirect
+	github.com/go-playground/validator/v10 v10.27.0 // indirect
 	github.com/go-redis/cache/v9 v9.0.0 // indirect
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
@@ -85,8 +84,8 @@ require (
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
 	github.com/spf13/cast v1.9.2 // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
-	github.com/stretchr/testify v1.10.0
+	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/stretchr/testify v1.11.1
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/techquest-tech/gobatch v0.1.6 // indirect
 	github.com/thanhpk/randstr v1.0.6
@@ -109,5 +108,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/mysql v1.6.0 // indirect
 	gorm.io/driver/sqlite v1.6.0 // indirect
-	gorm.io/driver/sqlserver v1.6.0 // indirect
+	gorm.io/driver/sqlserver v1.6.1 // indirect
 )
