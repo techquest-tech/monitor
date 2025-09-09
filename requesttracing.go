@@ -90,7 +90,7 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 }
 
 // emptyBody is an instance of empty reader.
-var emptyBody = io.NopCloser(strings.NewReader(""))
+// var emptyBody = io.NopCloser(strings.NewReader(""))
 
 func drainBody(b io.ReadCloser) (r1, r2 io.ReadCloser, err error) {
 	if b == nil || b == http.NoBody {

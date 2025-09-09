@@ -21,7 +21,7 @@ func TestNewBus(t *testing.T) {
 		wg.Add(1)
 		r := 0
 		log.Println(receivername + " started.")
-		for _ = range bus {
+		for range bus {
 			// log.Printf("%s: %s", receivername, v)
 			// cnt++
 			r++
