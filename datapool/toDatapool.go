@@ -1,6 +1,7 @@
 package datapool
 
 import (
+	"os"
 	"time"
 
 	p "github.com/parquet-go/parquet-go"
@@ -28,9 +29,16 @@ type Monitor2Datapool struct {
 func Enabled2Datapool() {
 	core.ProvideStartup(func(logger *zap.Logger) (core.Startup, error) {
 		adaptor := &Monitor2Datapool{
-			CacheFolder: "./data/monitor",
+			CacheFolder: "mem", // default using mem fs only, not file oupt. but switch to OSS if uat or prd
 		}
-		err := viper.UnmarshalKey("datapool", adaptor)
+
+		env := os.Getenv("ENV")
+		if env == "uat" || env == "prd" {
+			adaptor.CacheFolder = "oss://summation-datapool/{{env}}/{{app}}/monitor"
+		}
+
+		// or ovwrite by config
+		err := viper.UnmarshalKey("tracing.datapool", adaptor)
 		if err != nil {
 			logger.Error("unmarshal datapool config error", zap.Error(err))
 			return nil, err
