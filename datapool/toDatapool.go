@@ -29,12 +29,12 @@ type Monitor2Datapool struct {
 func Enabled2Datapool() {
 	core.ProvideStartup(func(logger *zap.Logger) (core.Startup, error) {
 		adaptor := &Monitor2Datapool{
-			CacheFolder: "mem", // default using mem fs only, not file oupt. but switch to OSS if uat or prd
+			CacheFolder: "./data/monitor", // default using mem fs only, not file oupt. but switch to OSS if uat or prd
 		}
 
 		env := os.Getenv("ENV")
 		if env == "uat" || env == "prd" {
-			adaptor.CacheFolder = "oss://summation-datapool/{{env}}/{{app}}/monitor"
+			adaptor.CacheFolder = "oss://{{env}}/{{app}}/monitor"
 		}
 
 		// or ovwrite by config
@@ -42,6 +42,10 @@ func Enabled2Datapool() {
 		if err != nil {
 			logger.Error("unmarshal datapool config error", zap.Error(err))
 			return nil, err
+		}
+		if adaptor.CacheFolder == "-" {
+			logger.Info("datapool disabled")
+			return nil, nil
 		}
 		dur := 30 * time.Second
 		if adaptor.BufferDur != "" {
