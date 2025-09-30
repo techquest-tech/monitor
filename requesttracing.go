@@ -14,17 +14,26 @@ import (
 	"go.uber.org/zap"
 )
 
-func LogOutbound(rt http.RoundTripper) http.RoundTripper {
+func Log(operationname string) http.RoundTripper {
+	return LogTracying(TracingDetails{
+		Optionname: operationname,
+	}, nil)
+}
+
+func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTripper {
 	if rt == nil {
 		rt = http.DefaultTransport
 	}
 	return requests.RoundTripFunc(func(req *http.Request) (res *http.Response, err error) {
 		start := time.Now()
-		fullLogging := TracingDetails{
-			Method:    req.Method,
-			UserAgent: req.UserAgent(),
-			StartedAt: time.Now(),
-		}
+		// fullLogging := TracingDetails{
+		// 	Method:    req.Method,
+		// 	UserAgent: req.UserAgent(),
+		// 	StartedAt: time.Now(),
+		// }
+		fullLogging.Method = req.Method
+		fullLogging.UserAgent = req.UserAgent()
+		fullLogging.StartedAt = time.Now()
 		uri := req.RequestURI
 		if uri == "" {
 			uri = req.URL.String()
@@ -33,7 +42,9 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 		if index := strings.Index(uri, "?"); index >= 0 {
 			uri = uri[:index]
 		}
-		fullLogging.Optionname = fmt.Sprintf("[%s]%s", req.Method, uri)
+		if fullLogging.Optionname == "" {
+			fullLogging.Optionname = fmt.Sprintf("[%s]%s", req.Method, uri)
+		}
 		logger := zap.L().With(zap.String("Optionname", fullLogging.Optionname))
 
 		logger.Info("outbound request")
@@ -87,6 +98,10 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 		TracingAdaptor.Push(fullLogging)
 		return
 	})
+}
+
+func LogOutbound(rt http.RoundTripper) http.RoundTripper {
+	return LogTracying(TracingDetails{}, rt)
 }
 
 // emptyBody is an instance of empty reader.
