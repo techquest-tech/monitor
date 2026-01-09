@@ -47,6 +47,7 @@ func Enabled2Datapool() {
 			logger.Info("datapool disabled")
 			return nil, nil
 		}
+		logger.Info("datapool enabled", zap.String("cacheFolder", adaptor.CacheFolder))
 		dur := 30 * time.Second
 		if adaptor.BufferDur != "" {
 			dur, err = time.ParseDuration(adaptor.BufferDur)
