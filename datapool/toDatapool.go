@@ -1,6 +1,7 @@
 package datapool
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -14,40 +15,50 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	SettingKey = "tracing.datapool"
+)
+
 var (
 	EnabledAct = false
 )
 
 // monitor data to datapool, which is in oss with parquet format
 type Monitor2Datapool struct {
-	CacheFolder string
-	BufferSize  int // settings for batch
-	BufferDur   string
-	Compress    string
+	Path       string
+	BufferSize int // settings for batch
+	BufferDur  string
+	Compress   string
 }
 
 func Enabled2Datapool() {
 	core.ProvideStartup(func(logger *zap.Logger) (core.Startup, error) {
 		adaptor := &Monitor2Datapool{
-			CacheFolder: "./data/monitor", // default using mem fs only, not file oupt. but switch to OSS if uat or prd
+			Path: "./data/monitor", // default using mem fs only, not file oupt. but switch to OSS if uat or prd
 		}
 
 		env := os.Getenv("ENV")
-		if env == "uat" || env == "prd" {
-			adaptor.CacheFolder = "oss://{{env}}/{{app}}/monitor"
-		}
 
+		if !viper.IsSet(SettingKey) {
+			viper.SetDefault(SettingKey+".type", "local")
+			if env == "uat" || env == "prd" {
+				viper.SetDefault(SettingKey+".type", "oss")
+				adaptor.Path = fmt.Sprintf("%s/%s/monitor", env, core.AppName)
+			}
+		}
 		// or ovwrite by config
-		err := viper.UnmarshalKey("tracing.datapool", adaptor)
+		err := viper.UnmarshalKey(SettingKey, adaptor)
 		if err != nil {
 			logger.Error("unmarshal datapool config error", zap.Error(err))
 			return nil, err
 		}
-		if adaptor.CacheFolder == "-" {
+		if adaptor.Path == "-" {
 			logger.Info("datapool disabled")
 			return nil, nil
 		}
-		logger.Info("datapool enabled", zap.String("cacheFolder", adaptor.CacheFolder))
+		storageType := viper.GetString(SettingKey + ".type")
+		logger.Info("datapool enabled", zap.String("cacheFolder", adaptor.Path),
+			zap.String("storageType", storageType))
 		dur := 30 * time.Second
 		if adaptor.BufferDur != "" {
 			dur, err = time.ParseDuration(adaptor.BufferDur)
@@ -67,7 +78,8 @@ func Enabled2Datapool() {
 			BufferDur:  dur,
 			BufferSize: adaptor.BufferSize,
 			Compress:   adaptor.Compress,
-			Folder:     adaptor.CacheFolder,
+			FsKey:      SettingKey,
+			Folder:     adaptor.Path,
 			Ackfile:    EnabledAct,
 		}
 		filenamePattern := "%s/20060102/150405"
@@ -87,7 +99,7 @@ func Enabled2Datapool() {
 			BufferDur:       dur,
 			BufferSize:      adaptor.BufferSize,
 			Compress:        adaptor.Compress,
-			Folder:          adaptor.CacheFolder,
+			Folder:          adaptor.Path,
 			FilenamePattern: "errorReport/20060102/150405",
 		}, p.SchemaOf(&ErrorReport4Parquet{}), core.ToAnyChan(trError))
 		scheError.Filter = func(msg []any) []any {
