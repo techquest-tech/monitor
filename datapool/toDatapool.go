@@ -45,6 +45,7 @@ func Enabled2Datapool() {
 				viper.SetDefault(SettingKey+".type", "oss")
 				adaptor.Path = fmt.Sprintf("%s/%s/monitor", env, core.AppName)
 			}
+			viper.SetDefault(SettingKey+".path", adaptor.Path)
 		}
 		// or ovwrite by config
 		err := viper.UnmarshalKey(SettingKey, adaptor)
