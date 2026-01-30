@@ -4,13 +4,15 @@ go 1.25.6
 
 require (
 	github.com/carlmjohnson/requests v0.25.1
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/gin-gonic/gin v1.11.0
+	github.com/grafana/loki v1.6.1
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/parquet-go/parquet-go v0.25.1
 	github.com/spf13/viper v1.21.0
 	github.com/techquest-tech/gin-shared v0.11.9
-	github.com/techquest-tech/lokiclient v0.1.4
 	go.uber.org/zap v1.27.1
+	google.golang.org/grpc v1.78.0
 	gorm.io/gorm v1.31.1
 )
 
@@ -20,9 +22,13 @@ require (
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef // indirect
+	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
+	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
+	github.com/gogo/protobuf v1.3.1 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -33,8 +39,10 @@ require (
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/sftp v1.13.8 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/quic-go/quic-go v0.54.0 // indirect
 	github.com/spf13/afero/sftpfs v1.15.0 // indirect
@@ -45,6 +53,7 @@ require (
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
+	google.golang.org/genproto v0.0.0-20200724131911-43cab4749ae7 // indirect
 	gorm.io/driver/postgres v1.6.0 // indirect
 )
 
@@ -103,7 +112,6 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/testify v1.11.1
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/techquest-tech/gobatch v0.1.6 // indirect
 	github.com/thanhpk/randstr v1.0.6
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.0 // indirect

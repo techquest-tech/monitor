@@ -20,6 +20,10 @@ type MonitorService interface {
 	ReportScheduleJob(req schedule.JobHistory) error
 }
 
+type Filterable interface {
+	ShouldFilter(tr TracingDetails) bool
+}
+
 // type P struct {
 // 	dig.In
 // 	services []MonitorService `group:"monitor"`
@@ -28,7 +32,18 @@ type MonitorService interface {
 func SubscribeMonitor(logger *zap.Logger, item MonitorService) {
 	receiver := fmt.Sprintf("%T", item)
 	logger.Info("sub monitor service", zap.String("service", receiver))
-	TracingAdaptor.Subscripter(receiver, item.ReportTracing)
+
+	if f, ok := item.(Filterable); ok {
+		TracingAdaptor.Subscripter(receiver, func(tr TracingDetails) error {
+			if f.ShouldFilter(tr) {
+				return item.ReportTracing(tr)
+			}
+			return nil
+		})
+	} else {
+		TracingAdaptor.Subscripter(receiver, item.ReportTracing)
+	}
+
 	schedule.JobHistoryAdaptor.Subscripter(receiver, item.ReportScheduleJob)
 	core.ErrorAdaptor.Subscripter(receiver, item.ReportError)
 }

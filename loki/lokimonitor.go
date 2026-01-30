@@ -1,7 +1,6 @@
 package loki
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,18 +9,28 @@ import (
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/schedule"
-	"github.com/techquest-tech/lokiclient"
 	"github.com/techquest-tech/monitor"
 	"go.uber.org/zap"
 )
 
+type LokiConfig struct {
+	URL         string
+	User        string
+	Password    string
+	Included    []string
+	Excluded    []string
+	IncludedIPs []string
+	ExcludedIPs []string
+}
+
 type LokiSetting struct {
+	monitor.BaseFilter
 	// monitor.AppSettings
-	Config       *lokiclient.PushConfig
+	Config       *LokiConfig
 	FixedHeaders map[string]string
 	Logger       *zap.Logger
 	MaxBytes     int
-	ch           chan any
+	client       *GrpcClient
 }
 
 func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
@@ -35,11 +44,8 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 		logger.Info("no loki client config. return nil")
 		return nil, nil
 	}
-	conf := &lokiclient.PushConfig{
-		URL:      "http://127.0.0.1:3001",
-		Batch:    100,
-		Interval: "10s",
-		Gzip:     true,
+	conf := &LokiConfig{
+		URL: "127.0.0.1:9095",
 	}
 	// logger.Info("connect to loki", zap.String("loki", settings.GetString("URL")))
 	err := settings.Unmarshal(conf)
@@ -48,19 +54,23 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 		return nil, err
 	}
 	loki.Config = conf
+	loki.BaseFilter = monitor.BaseFilter{
+		Included: conf.Included,
+		Excluded: conf.Excluded,
+	}
 
 	//random an ID
 	// rand.Seed(time.Now().Unix())
 
-	ctx, canel := context.WithCancel(context.TODO())
-
-	core.OnServiceStopping(core.SystenEvent(canel))
-
-	ch, err := conf.NewClient(ctx)
+	client, err := NewGrpcClient(conf)
 	if err != nil {
 		return nil, err
 	}
-	loki.ch = ch
+	loki.client = client
+
+	core.OnServiceStopping(func() {
+		client.Close()
+	})
 
 	loki.FixedHeaders["app"] = core.AppName
 	loki.FixedHeaders["version"] = core.Version
@@ -89,8 +99,8 @@ func (lm *LokiSetting) ReportScheduleJob(req schedule.JobHistory) error {
 	header["job"] = req.Job
 
 	body, _ := json.Marshal(req)
-	lm.ch <- lokiclient.NewPushItem(header, string(body))
-	return nil
+	// lm.ch <- lokiclient.NewPushItem(header, string(body))
+	return lm.client.Push(header, string(body))
 }
 
 func (lm *LokiSetting) ReportError(rr core.ErrorReport) error {
@@ -102,8 +112,8 @@ func (lm *LokiSetting) ReportError(rr core.ErrorReport) error {
 	header["message"] = rr.Error.Error()
 
 	body := string(rr.FullStack)
-	lm.ch <- lokiclient.NewPushItem(header, body)
-	return nil
+	// lm.ch <- lokiclient.NewPushItem(header, body)
+	return lm.client.Push(header, body)
 }
 
 func (lm *LokiSetting) cloneFixedHeader() map[string]string {
@@ -140,8 +150,8 @@ func (lm *LokiSetting) ReportTracing(tr monitor.TracingDetails) error {
 		body = body[:lm.MaxBytes-1]
 	}
 
-	lm.ch <- lokiclient.NewPushItem(header, string(body))
-	return nil
+	// lm.ch <- lokiclient.NewPushItem(header, string(body))
+	return lm.client.Push(header, string(body))
 }
 
 func EnableLokiMonitor() {
