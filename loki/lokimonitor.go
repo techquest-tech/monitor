@@ -44,23 +44,24 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	// 	logger.Info("no loki client config. return nil")
 	// 	return nil, nil
 	// }
-	conf := &LokiConfig{
-		URL: "127.0.0.1:9095",
-	}
+	conf := &LokiConfig{}
 	// logger.Info("connect to loki", zap.String("loki", settings.GetString("URL")))
 	err := viper.UnmarshalKey("tracing.loki", conf) //settings.Unmarshal(conf)
 	if err != nil {
 		logger.Error("loki config error.", zap.Error(err))
 		return nil, err
 	}
+
+	if conf.URL == "" {
+		logger.Info("no loki client config, return nil")
+		return nil, nil
+	}
+
 	loki.Config = conf
 	loki.BaseFilter = monitor.BaseFilter{
 		Included: conf.Included,
 		Excluded: conf.Excluded,
 	}
-
-	//random an ID
-	// rand.Seed(time.Now().Unix())
 
 	client, err := NewGrpcClient(conf)
 	if err != nil {
