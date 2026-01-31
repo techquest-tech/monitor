@@ -22,10 +22,10 @@ type MqttSource struct {
 	Logger *zap.Logger
 }
 
-func NewMqttSource(logger *zap.Logger, client *mqttclient.MqttService) *MqttSource {
+func NewMqttSource(logger *zap.Logger) (*MqttSource, error) {
 	settings := viper.Sub("tracing.mqtt")
 	if settings == nil {
-		return nil
+		return nil, nil
 	}
 	conf := &MqttConfig{
 		SharedMode: true,
@@ -33,14 +33,20 @@ func NewMqttSource(logger *zap.Logger, client *mqttclient.MqttService) *MqttSour
 	err := settings.Unmarshal(conf)
 	if err != nil {
 		logger.Error("failed to unmarshal mqtt config", zap.Error(err))
-		return nil
+		return nil, err
+	}
+
+	client, err := mqttclient.InitMqttService("monitor-{{.hostname}}", 1, true, "")
+	if err != nil {
+		logger.Error("connect to mqtt for monitor failed.", zap.Error(err))
+		return nil, err
 	}
 
 	return &MqttSource{
 		Config: conf,
 		Logger: logger,
 		Client: client,
-	}
+	}, nil
 }
 
 func (ms *MqttSource) Start() {

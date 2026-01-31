@@ -89,7 +89,18 @@ func (c *GrpcClient) Push(labels map[string]string, line string) error {
 		},
 	}
 
-	_, err := c.client.Push(context.Background(), req)
+	var err error
+	backoff := 100 * time.Millisecond
+	for attempt := 0; attempt < 3; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_, err = c.client.Push(ctx, req)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		time.Sleep(backoff)
+		backoff *= 2
+	}
 	return err
 }
 
