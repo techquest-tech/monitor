@@ -101,7 +101,7 @@ func Enabled2Datapool() {
 			BufferSize:      adaptor.BufferSize,
 			Compress:        adaptor.Compress,
 			Folder:          adaptor.Path,
-			FilenamePattern: "errorReport/20060102/150405",
+			FilenamePattern: adaptor.Path + "/errorReport/20060102/150405",
 		}, p.SchemaOf(&ErrorReport4Parquet{}), core.ToAnyChan(trError))
 		scheError.Filter = func(msg []any) []any {
 			return lo.Map(msg, func(item any, index int) any {

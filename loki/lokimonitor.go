@@ -39,16 +39,16 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 		Logger:       logger,
 		MaxBytes:     262144,
 	}
-	settings := viper.Sub("tracing.loki")
-	if settings == nil {
-		logger.Info("no loki client config. return nil")
-		return nil, nil
-	}
+	// settings := viper.Sub("tracing.loki")
+	// if settings == nil {
+	// 	logger.Info("no loki client config. return nil")
+	// 	return nil, nil
+	// }
 	conf := &LokiConfig{
 		URL: "127.0.0.1:9095",
 	}
 	// logger.Info("connect to loki", zap.String("loki", settings.GetString("URL")))
-	err := settings.Unmarshal(conf)
+	err := viper.UnmarshalKey("tracing.loki", conf) //settings.Unmarshal(conf)
 	if err != nil {
 		logger.Error("loki config error.", zap.Error(err))
 		return nil, err
