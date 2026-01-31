@@ -3,7 +3,6 @@ package monitor
 import (
 	"bytes"
 	"context"
-	"math"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -102,7 +101,7 @@ var InitTracingService = func(logger *zap.Logger) *TracingRequestService {
 	return sr
 }
 
-var TracingAdaptor = core.NewChanAdaptor[TracingDetails](math.MaxInt16)
+var TracingAdaptor = core.NewChanAdaptor[TracingDetails](10000)
 
 func init() {
 	core.Provide(InitTracingService)

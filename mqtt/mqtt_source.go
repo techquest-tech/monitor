@@ -12,7 +12,8 @@ import (
 )
 
 type MqttConfig struct {
-	Topic []string
+	SharedMode bool
+	Topic      []string
 }
 
 type MqttSource struct {
@@ -26,7 +27,9 @@ func NewMqttSource(logger *zap.Logger, client *mqttclient.MqttService) *MqttSour
 	if settings == nil {
 		return nil
 	}
-	conf := &MqttConfig{}
+	conf := &MqttConfig{
+		SharedMode: true,
+	}
 	err := settings.Unmarshal(conf)
 	if err != nil {
 		logger.Error("failed to unmarshal mqtt config", zap.Error(err))
@@ -47,7 +50,10 @@ func (ms *MqttSource) Start() {
 	}
 
 	for _, topic := range ms.Config.Topic {
-		err := ms.Client.Sub("$share/monitor/"+topic, ms.onMessage)
+		if ms.Config.SharedMode {
+			topic = "$share/monitor/" + topic
+		}
+		err := ms.Client.Sub(topic, ms.onMessage)
 		if err != nil {
 			ms.Logger.Error("failed to subscribe topic", zap.String("topic", topic), zap.Error(err))
 		} else {
