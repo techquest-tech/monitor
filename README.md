@@ -71,6 +71,22 @@ go build -tags "monitor_db monitor_loki" .
 *   **DataPool (`datapool/`)**: 将数据保存为 Parquet 文件，通常用于大数据分析或归档。
 *   **Console**: 直接输出到控制台，便于开发调试。
 
+#### Loki 配置 (Protocol 选择)
+通过 `tracing.loki` 配置可以选择客户端协议，默认使用 REST，支持 BasicAuth。
+
+```yaml
+tracing:
+  loki:
+    URL: http://localhost:3100
+    User: admin
+    Password: secret
+    Protocol: rest  # 可选: "rest" | "grpc"，缺省为 "rest"
+```
+
+行为说明：
+- Protocol = "rest" 或缺省：优先 REST，REST 初始化失败时自动回退到 gRPC
+- Protocol = "grpc"：优先 gRPC，gRPC 初始化失败时自动回退到 REST
+
 ### 启动与集成 (`bootup/`)
 包含各个模块的初始化代码，利用依赖注入机制来自动装配启用的监控服务。
 这些初始化代码通过 Build Tags 控制，确保只有被选中的模块才会被编译和注册。
