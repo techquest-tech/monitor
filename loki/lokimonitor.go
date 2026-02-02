@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
@@ -17,6 +18,7 @@ type LokiConfig struct {
 	URL         string
 	User        string
 	Password    string
+	Protocol    string
 	Included    []string
 	Excluded    []string
 	IncludedIPs []string
@@ -30,7 +32,12 @@ type LokiSetting struct {
 	FixedHeaders map[string]string
 	Logger       *zap.Logger
 	MaxBytes     int
-	client       *GrpcClient
+	client       LokiClient
+}
+
+type LokiClient interface {
+	Push(labels map[string]string, line string) error
+	Close() error
 }
 
 func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
@@ -63,11 +70,49 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 		Excluded: conf.Excluded,
 	}
 
-	client, err := NewGrpcClient(conf)
-	if err != nil {
-		return nil, err
+	// Choose client by config; default REST
+	var client LokiClient
+	proto := strings.ToLower(strings.TrimSpace(conf.Protocol))
+	if proto == "" || proto == "rest" {
+		rc, rerr := NewRestClient(conf)
+		if rerr != nil {
+			logger.Warn("init loki REST client failed, try gRPC", zap.Error(rerr))
+			gc, gerr := NewGrpcClient(conf)
+			if gerr != nil {
+				logger.Error("init loki gRPC client failed", zap.Error(gerr))
+				return nil, gerr
+			}
+			client = gc
+		} else {
+			client = rc
+		}
+	} else {
+		gc, gerr := NewGrpcClient(conf)
+		if gerr != nil {
+			logger.Warn("init loki gRPC client failed, try REST", zap.Error(gerr))
+			rc, rerr := NewRestClient(conf)
+			if rerr != nil {
+				logger.Error("init loki REST client failed", zap.Error(rerr))
+				return nil, rerr
+			}
+			client = rc
+		} else {
+			client = gc
+		}
 	}
 	loki.client = client
+	used := "grpc"
+	if _, ok := client.(*RestClient); ok {
+		used = "rest"
+	}
+	logger.Info("connect to loki",
+		zap.String("protocol", used),
+		zap.String("url", conf.URL),
+		zap.String("user", conf.User),
+		zap.Bool("hasAuth", conf.User != "" || conf.Password != ""),
+		zap.Strings("included", conf.Included),
+		zap.Strings("excluded", conf.Excluded),
+	)
 
 	core.OnServiceStopping(func() {
 		client.Close()
