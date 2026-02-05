@@ -1,6 +1,7 @@
 package loki
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"strconv"
@@ -50,14 +51,15 @@ func (c *RestClient) Push(labels map[string]string, line string) error {
 			},
 		},
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	err := requests.
 		URL(c.endpoint).
 		Method("POST").
 		BodyJSON(body).
 		Header("Content-Type", "application/json").
 		Header("Authorization", c.auth).
-		CheckStatus(200).
-		Fetch(nil)
+		Fetch(ctx)
 	if err != nil {
 		return fmt.Errorf("loki REST push failed: %w", err)
 	}
