@@ -1,39 +1,23 @@
 package monitor
 
-import (
-	"encoding/json"
-
-	"go.uber.org/zap"
-)
+import "go.uber.org/zap"
 
 type ConsoleTracing struct {
 	Log *zap.Logger
 }
 
-func ToByte(obj any) []byte {
-	if obj == nil {
-		return []byte{}
-	}
-	if bt, ok := obj.([]byte); ok {
-		return bt
-	}
-	if str, ok := obj.(string); ok {
-		return []byte(str)
-	}
-	result, err := json.Marshal(obj)
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
-
 func (tr *ConsoleTracing) LogBody(req TracingDetails) error {
 	log := tr.Log.With(zap.String("method", req.Method), zap.String("uri", req.Uri))
-	if req.Body != "" {
-		log.Debug("req", zap.String("req body", req.Body))
+	if len(req.Body) > 0 {
+		bodyText, bodyEnc := EncodePayloadForText(req.Body)
+		log.Debug("req", zap.String("req encoding", bodyEnc), zap.String("req body", bodyText))
 	}
-	if req.Resp != "" {
-		log.Debug("resp", zap.Int("status code", req.Status), zap.ByteString("resp", ToByte(req.Resp)))
+	if len(req.Resp) > 0 {
+		respText, respEnc := EncodePayloadForText(req.Resp)
+		log.Debug("resp",
+			zap.Int("status code", req.Status),
+			zap.String("resp encoding", respEnc),
+			zap.String("resp", respText))
 	}
 	return nil
 }
