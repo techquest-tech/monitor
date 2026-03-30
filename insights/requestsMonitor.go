@@ -130,15 +130,19 @@ func (appins *ResquestMonitor) ReportTracing(tr monitor.TracingDetails) error {
 	// resp := monitor.ToByte(tr.Resp)
 
 	if len(tr.Body) > 0 {
+		bodyText, bodyEncoding := monitor.EncodePayloadForText(tr.Body)
 		if appins.Details {
-			t.Properties["req"] = string(tr.Body)
+			t.Properties["req"] = bodyText
 		}
+		t.Properties["req-encoding"] = bodyEncoding
 		t.Measurements["body-size"] = float64(len(tr.Body))
 	}
 	if len(tr.Resp) > 0 {
+		respText, respEncoding := monitor.EncodePayloadForText(tr.Resp)
 		if appins.Details {
-			t.Properties["resp"] = string(tr.Resp)
+			t.Properties["resp"] = respText
 		}
+		t.Properties["resp-encoding"] = respEncoding
 		t.Measurements["resp-size"] = float64(len(tr.Resp))
 	}
 

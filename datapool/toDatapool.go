@@ -25,10 +25,7 @@ var (
 
 // monitor data to datapool, which is in oss with parquet format
 type Monitor2Datapool struct {
-	Path       string
-	BufferSize int // settings for batch
-	BufferDur  string
-	Compress   string
+	Path string
 }
 
 func Enabled2Datapool() {
@@ -60,14 +57,6 @@ func Enabled2Datapool() {
 		storageType := viper.GetString(SettingKey + ".type")
 		logger.Info("datapool enabled", zap.String("cacheFolder", adaptor.Path),
 			zap.String("storageType", storageType))
-		dur := 30 * time.Second
-		if adaptor.BufferDur != "" {
-			dur, err = time.ParseDuration(adaptor.BufferDur)
-			if err != nil {
-				logger.Error("parse datapool buffer duration error", zap.Error(err))
-				return nil, err
-			}
-		}
 		// event, err := parquet.NewOssEventService(logger)
 		// if err != nil {
 		// 	logger.Warn("init oss event service error, use default", zap.Error(err))
@@ -76,12 +65,9 @@ func Enabled2Datapool() {
 		// }
 
 		settings := &parquet.ParquetSetting{
-			BufferDur:  dur,
-			BufferSize: adaptor.BufferSize,
-			Compress:   adaptor.Compress,
-			FsKey:      SettingKey,
-			Folder:     adaptor.Path,
-			Ackfile:    EnabledAct,
+			FsKey:   SettingKey,
+			Folder:  adaptor.Path,
+			Ackfile: EnabledAct,
 		}
 		filenamePattern := "%s/20060102/150405"
 		// tracing
@@ -97,9 +83,6 @@ func Enabled2Datapool() {
 		// error
 		trError := core.ErrorAdaptor.Sub("monitor-error")
 		scheError := parquet.NewParquetDataServiceBySchema(&parquet.ParquetSetting{
-			BufferDur:       dur,
-			BufferSize:      adaptor.BufferSize,
-			Compress:        adaptor.Compress,
 			Folder:          adaptor.Path,
 			FilenamePattern: adaptor.Path + "/errorReport/20060102/150405",
 		}, p.SchemaOf(&ErrorReport4Parquet{}), core.ToAnyChan(trError))

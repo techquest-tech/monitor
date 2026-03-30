@@ -3,7 +3,9 @@ package monitor
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
@@ -22,11 +24,13 @@ type TracingDetails struct {
 	Optionname string
 	Uri        string
 	Method     string
-	Body       string
+	Body       []byte
+	BodyEnc    string
 	Durtion    time.Duration
 	Status     int
 	TargetID   uint
-	Resp       string
+	Resp       []byte
+	RespEnc    string
 	ClientIP   string
 	UserAgent  string
 	Device     string
@@ -34,6 +38,34 @@ type TracingDetails struct {
 	Operator   string
 	StartedAt  time.Time
 	// Props     map[string]interface{}
+}
+
+const (
+	PayloadEncodingUTF8   = "utf8"
+	PayloadEncodingBase64 = "base64"
+	PayloadEncodingEmpty  = "empty"
+)
+
+func DetectPayloadEncoding(payload []byte) string {
+	if len(payload) == 0 {
+		return PayloadEncodingEmpty
+	}
+	if utf8.Valid(payload) {
+		return PayloadEncodingUTF8
+	}
+	return PayloadEncodingBase64
+}
+
+func EncodePayloadForText(payload []byte) (string, string) {
+	encoding := DetectPayloadEncoding(payload)
+	switch encoding {
+	case PayloadEncodingUTF8:
+		return string(payload), encoding
+	case PayloadEncodingBase64:
+		return base64.StdEncoding.EncodeToString(payload), encoding
+	default:
+		return "", encoding
+	}
 }
 
 type RespLogging struct {

@@ -184,6 +184,8 @@ func (lm *LokiSetting) ReportTracing(tr monitor.TracingDetails) error {
 	header["app"] = core.AppName
 	header["version"] = core.Version
 	header["tenant"] = tr.Tenant
+	header["reqEnc"] = tr.BodyEnc
+	header["respEnc"] = tr.RespEnc
 
 	body, err := json.Marshal(tr)
 	if err != nil {

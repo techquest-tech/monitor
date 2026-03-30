@@ -52,12 +52,16 @@ func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTri
 			// reqcache := make([]byte, 1024)
 			reqcache, _ := io.ReadAll(req.Body)
 			req.Body = io.NopCloser(bytes.NewBuffer(reqcache))
-			reqbody := string(reqcache)
+			reqbody := reqcache
 			ct := req.Header.Get("Content-Type")
 			if req.Method == "POST" && ct == "application/x-www-form-urlencoded" {
-				reqbody, _ = url.QueryUnescape(reqbody)
+				decoded, decodeErr := url.QueryUnescape(string(reqcache))
+				if decodeErr == nil {
+					reqbody = []byte(decoded)
+				}
 			}
 			fullLogging.Body = reqbody
+			fullLogging.BodyEnc = DetectPayloadEncoding(reqbody)
 		}
 
 		res, err = rt.RoundTrip(req)
@@ -67,7 +71,8 @@ func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTri
 		if err != nil {
 			wrapError := fmt.Errorf("requst to %s, resp err %v", fullLogging.Uri, err)
 			// core.Bus.Publish(core.EventError, wrapError)
-			fullLogging.Resp = "error:" + err.Error()
+			fullLogging.Resp = []byte("error:" + err.Error())
+			fullLogging.RespEnc = PayloadEncodingUTF8
 			core.ErrorAdaptor.Push(core.ErrorReport{
 				Error: wrapError,
 				Uri:   fullLogging.Uri,
@@ -76,7 +81,8 @@ func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTri
 		} else {
 			respdetails, err := DumpRespBody(res)
 			if err == nil && len(respdetails) > 0 {
-				fullLogging.Resp = string(respdetails)
+				fullLogging.Resp = respdetails
+				fullLogging.RespEnc = DetectPayloadEncoding(respdetails)
 			}
 			if err != nil || res.StatusCode >= 400 {
 				rr := core.ErrorReport{

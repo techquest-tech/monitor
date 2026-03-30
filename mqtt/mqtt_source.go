@@ -73,7 +73,8 @@ func (ms *MqttSource) onMessage(client mqtt.Client, msg mqtt.Message) {
 		Optionname: msg.Topic(),
 		Uri:        "mqtt://" + msg.Topic(),
 		Method:     "MQTT",
-		Body:       string(msg.Payload()),
+		Body:       append([]byte(nil), msg.Payload()...),
+		BodyEnc:    monitor.DetectPayloadEncoding(msg.Payload()),
 		Durtion:    0, // Message receipt is instantaneous in this context
 		Status:     200,
 		StartedAt:  time.Now(),

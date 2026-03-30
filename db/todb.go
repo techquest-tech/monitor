@@ -46,7 +46,7 @@ func NewTracingRequestService(db *gorm.DB, logger *zap.Logger) (*TracingRequestS
 // }
 
 func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req monitor.TracingDetails) error {
-	if req.Body == "" && req.Resp == "" {
+	if len(req.Body) == 0 && len(req.Resp) == 0 {
 		tr.Logger.Debug("both req & resp is emtpy, ignored.")
 		return nil
 	}
@@ -76,11 +76,11 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req monitor.TracingDetai
 		Operator:   req.Operator,
 		Uri:        req.Uri,
 		Method:     req.Method,
-		Body:       []byte(req.Body),
+		Body:       req.Body,
 		Durtion:    req.Durtion,
 		Status:     req.Status,
 		TargetID:   req.TargetID,
-		Resp:       []byte(req.Resp),
+		Resp:       req.Resp,
 		ClientIP:   req.ClientIP,
 		UserAgent:  req.UserAgent,
 		Device:     req.Device,
