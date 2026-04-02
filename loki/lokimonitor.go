@@ -184,10 +184,30 @@ func (lm *LokiSetting) ReportTracing(tr monitor.TracingDetails) error {
 	header["app"] = core.AppName
 	header["version"] = core.Version
 	header["tenant"] = tr.Tenant
-	header["reqEnc"] = tr.BodyEnc
-	header["respEnc"] = tr.RespEnc
+	bodyText, bodyEnc := monitor.EncodePayloadForText(tr.Body)
+	respText, respEnc := monitor.EncodePayloadForText(tr.Resp)
 
-	body, err := json.Marshal(tr)
+	if tr.BodyEnc != "" {
+		bodyEnc = tr.BodyEnc
+	}
+	if tr.RespEnc != "" {
+		respEnc = tr.RespEnc
+	}
+
+	header["reqEnc"] = bodyEnc
+	header["respEnc"] = respEnc
+
+	lokiTr := struct {
+		monitor.TracingDetails
+		Body string
+		Resp string
+	}{
+		TracingDetails: tr,
+		Body:           bodyText,
+		Resp:           respText,
+	}
+
+	body, err := json.Marshal(lokiTr)
 	if err != nil {
 		lm.Logger.Error("marshal details failed.", zap.Error(err))
 		return err
