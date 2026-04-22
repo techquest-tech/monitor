@@ -68,11 +68,14 @@ func (appins *ResquestMonitor) ReportScheduleJob(req schedule.JobHistory) error 
 	}
 
 	details := monitor.TracingDetails{
-		Uri:       req.Job,
-		Method:    "Cron",
-		Durtion:   req.Duration,
-		Status:    status,
-		StartedAt: time.Now(),
+		Uri:            req.Job,
+		Method:         "Cron",
+		AppName:        core.AppName,
+		AppVersion:     core.Version,
+		VerbosityLevel: monitor.TracingVerbosityLevelRead,
+		Durtion:        req.Duration,
+		Status:         status,
+		StartedAt:      time.Now(),
 	}
 	appins.ReportTracing(details)
 	return nil
@@ -117,14 +120,23 @@ func (appins *ResquestMonitor) ReportTracing(tr monitor.TracingDetails) error {
 	)
 
 	t.Source = tr.ClientIP
-	t.Properties["app"] = core.AppName
-	t.Properties["version"] = core.Version
+	app := tr.AppName
+	if app == "" {
+		app = core.AppName
+	}
+	version := tr.AppVersion
+	if version == "" {
+		version = core.Version
+	}
+	t.Properties["app"] = app
+	t.Properties["version"] = version
 	t.Properties["user-agent"] = tr.UserAgent
 	t.Properties["device"] = tr.Device
 	// if tr.Tenant != "" {
 	t.Properties["owner"] = tr.Tenant
 	// }
 	t.Properties["operator"] = tr.Operator
+	t.Properties["verbosityLevel"] = fmt.Sprintf("%d", tr.VerbosityLevel)
 
 	// req := monitor.ToByte(tr.Body)
 	// resp := monitor.ToByte(tr.Resp)

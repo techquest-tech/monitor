@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -21,23 +22,46 @@ const (
 // FullRequestDetails
 
 type TracingDetails struct {
-	Optionname string
-	Uri        string
-	Method     string
-	Body       []byte
-	BodyEnc    string
-	Durtion    time.Duration
-	Status     int
-	TargetID   uint
-	Resp       []byte
-	RespEnc    string
-	ClientIP   string
-	UserAgent  string
-	Device     string
-	Tenant     string
-	Operator   string
-	StartedAt  time.Time
+	Optionname     string
+	Uri            string
+	Method         string
+	AppName        string
+	AppVersion     string
+	VerbosityLevel TracingVerbosityLevel
+	Body           []byte
+	BodyEnc        string
+	Durtion        time.Duration
+	Status         int
+	TargetID       uint
+	Resp           []byte
+	RespEnc        string
+	ClientIP       string
+	UserAgent      string
+	Device         string
+	Tenant         string
+	Operator       string
+	StartedAt      time.Time
 	// Props     map[string]interface{}
+}
+
+type TracingVerbosityLevel int
+
+const (
+	TracingVerbosityLevelMostImportant TracingVerbosityLevel = 0
+	TracingVerbosityLevelThirdParty    TracingVerbosityLevel = 10
+	TracingVerbosityLevelWrite         TracingVerbosityLevel = 50
+	TracingVerbosityLevelRead          TracingVerbosityLevel = 99
+)
+
+func VerbosityLevelByMethod(method string) TracingVerbosityLevel {
+	switch strings.ToUpper(strings.TrimSpace(method)) {
+	case "POST", "PUT", "PATCH", "DELETE":
+		return TracingVerbosityLevelWrite
+	case "GET", "HEAD", "OPTIONS":
+		return TracingVerbosityLevelRead
+	default:
+		return TracingVerbosityLevelRead
+	}
 }
 
 const (
@@ -79,12 +103,13 @@ func (w RespLogging) Write(b []byte) (int, error) {
 }
 
 type TracingRequestService struct {
-	Log      *zap.Logger
-	Console  bool
-	Request  bool
-	Resp     bool
-	Included []string
-	Excluded []string
+	Log                    *zap.Logger
+	Console                bool
+	Request                bool
+	Resp                   bool
+	Included               []string
+	Excluded               []string
+	VerbosityLevelByMethod map[string]TracingVerbosityLevel
 }
 
 func (tr *TracingRequestService) ShouldLogReq(ctx context.Context, uri string) bool {
@@ -103,6 +128,70 @@ func (tr *TracingRequestService) ShouldLogReq(ctx context.Context, uri string) b
 		}
 	}
 	return matched
+}
+
+func (tr *TracingRequestService) ResolveVerbosityLevel(method string, fallback TracingVerbosityLevel) TracingVerbosityLevel {
+	if tr == nil || len(tr.VerbosityLevelByMethod) == 0 {
+		return fallback
+	}
+	if lvl, ok := tr.VerbosityLevelByMethod[method]; ok {
+		return lvl
+	}
+	trimmed := strings.TrimSpace(method)
+	if trimmed != method {
+		if lvl, ok := tr.VerbosityLevelByMethod[trimmed]; ok {
+			return lvl
+		}
+	}
+	trimmed = strings.TrimPrefix(trimmed, "/")
+	if lvl, ok := tr.VerbosityLevelByMethod[trimmed]; ok {
+		return lvl
+	}
+	if idx := strings.LastIndex(trimmed, "/"); idx >= 0 && idx+1 < len(trimmed) {
+		short := trimmed[idx+1:]
+		if lvl, ok := tr.VerbosityLevelByMethod[short]; ok {
+			return lvl
+		}
+	}
+	return fallback
+}
+
+func VerbosityLevelByGRPCMethod(fullMethod string) TracingVerbosityLevel {
+	s := strings.TrimSpace(fullMethod)
+	s = strings.TrimPrefix(s, "/")
+	method := s
+	if idx := strings.LastIndex(s, "/"); idx >= 0 && idx+1 < len(s) {
+		method = s[idx+1:]
+	}
+	m := strings.ToLower(method)
+	switch {
+	case strings.HasPrefix(m, "create"),
+		strings.HasPrefix(m, "update"),
+		strings.HasPrefix(m, "delete"),
+		strings.HasPrefix(m, "set"),
+		strings.HasPrefix(m, "add"),
+		strings.HasPrefix(m, "remove"),
+		strings.HasPrefix(m, "bind"),
+		strings.HasPrefix(m, "unbind"),
+		strings.HasPrefix(m, "save"),
+		strings.HasPrefix(m, "write"),
+		strings.HasPrefix(m, "upsert"),
+		strings.HasPrefix(m, "confirm"),
+		strings.HasPrefix(m, "cancel"),
+		strings.HasPrefix(m, "approve"),
+		strings.HasPrefix(m, "submit"):
+		return TracingVerbosityLevelWrite
+	case strings.HasPrefix(m, "get"),
+		strings.HasPrefix(m, "list"),
+		strings.HasPrefix(m, "query"),
+		strings.HasPrefix(m, "find"),
+		strings.HasPrefix(m, "search"),
+		strings.HasPrefix(m, "describe"),
+		strings.HasPrefix(m, "read"):
+		return TracingVerbosityLevelRead
+	default:
+		return TracingVerbosityLevelRead
+	}
 }
 
 // func (tr *TracingRequestService) LogRequest(ctx context.Context, req *TracingDetails) error {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/techquest-tech/gin-shared/pkg/auth"
+	"github.com/techquest-tech/gin-shared/pkg/core"
 	"go.uber.org/zap"
 )
 
@@ -96,20 +97,23 @@ func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
 	}
 
 	fullLogging := TracingDetails{
-		Optionname: matchedUrl,
-		Uri:        uri,
-		Method:     method,
-		Body:       reqcache,
-		BodyEnc:    DetectPayloadEncoding(reqcache),
-		Durtion:    dur,
-		Status:     status,
-		TargetID:   rawID,
-		Resp:       respcache,
-		RespEnc:    DetectPayloadEncoding(respcache),
-		ClientIP:   c.ClientIP(),
-		UserAgent:  c.Request.UserAgent(),
-		Device:     c.GetHeader("deviceID"),
-		StartedAt:  startAt,
+		Optionname:     matchedUrl,
+		Uri:            uri,
+		Method:         method,
+		AppName:        core.AppName,
+		AppVersion:     core.Version,
+		VerbosityLevel: VerbosityLevelByMethod(method),
+		Body:           reqcache,
+		BodyEnc:        DetectPayloadEncoding(reqcache),
+		Durtion:        dur,
+		Status:         status,
+		TargetID:       rawID,
+		Resp:           respcache,
+		RespEnc:        DetectPayloadEncoding(respcache),
+		ClientIP:       c.ClientIP(),
+		UserAgent:      c.Request.UserAgent(),
+		Device:         c.GetHeader("deviceID"),
+		StartedAt:      startAt,
 	}
 
 	if obj, ok := c.Get(auth.KeyUser); ok {

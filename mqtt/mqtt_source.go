@@ -1,8 +1,10 @@
 package mqtt
 
 import (
+	"strings"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
@@ -12,8 +14,9 @@ import (
 )
 
 type MqttConfig struct {
-	SharedMode bool
-	Topic      []string
+	SharedMode          bool
+	Topic               []string
+	TopicVerbosityLevel map[string]int
 }
 
 type MqttSource struct {
@@ -69,15 +72,33 @@ func (ms *MqttSource) Start() {
 }
 
 func (ms *MqttSource) onMessage(client mqtt.Client, msg mqtt.Message) {
+	verbosityLevel := monitor.TracingVerbosityLevelRead
+	if ms.Config != nil && ms.Config.TopicVerbosityLevel != nil {
+		if lvl, ok := ms.Config.TopicVerbosityLevel[msg.Topic()]; ok {
+			verbosityLevel = monitor.TracingVerbosityLevel(lvl)
+		} else {
+			for pattern, lvl := range ms.Config.TopicVerbosityLevel {
+				if strings.Contains(pattern, "*") {
+					if matched, _ := doublestar.Match(pattern, msg.Topic()); matched {
+						verbosityLevel = monitor.TracingVerbosityLevel(lvl)
+						break
+					}
+				}
+			}
+		}
+	}
 	details := monitor.TracingDetails{
-		Optionname: msg.Topic(),
-		Uri:        "mqtt://" + msg.Topic(),
-		Method:     "MQTT",
-		Body:       append([]byte(nil), msg.Payload()...),
-		BodyEnc:    monitor.DetectPayloadEncoding(msg.Payload()),
-		Durtion:    0, // Message receipt is instantaneous in this context
-		Status:     200,
-		StartedAt:  time.Now(),
+		Optionname:     msg.Topic(),
+		Uri:            "mqtt://" + msg.Topic(),
+		Method:         "MQTT",
+		AppName:        core.AppName,
+		AppVersion:     core.Version,
+		VerbosityLevel: verbosityLevel,
+		Body:           append([]byte(nil), msg.Payload()...),
+		BodyEnc:        monitor.DetectPayloadEncoding(msg.Payload()),
+		Durtion:        0, // Message receipt is instantaneous in this context
+		Status:         200,
+		StartedAt:      time.Now(),
 		// Fill other fields if necessary
 	}
 	monitor.TracingAdaptor.Push(details)

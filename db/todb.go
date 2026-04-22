@@ -3,6 +3,7 @@ package db
 import (
 	"time"
 
+	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/orm"
 	"github.com/techquest-tech/monitor"
@@ -12,18 +13,22 @@ import (
 
 type FullRequestDetails struct {
 	gorm.Model
-	Optionname string `gorm:"size:256"`
-	Operator   string `gorm:"size:64"`
-	Uri        string `gorm:"size:256"`
-	Method     string `gorm:"size:16"`
-	Body       []byte
-	Durtion    time.Duration
-	Status     int
-	TargetID   uint
-	Resp       []byte
-	ClientIP   string `gorm:"size:64"`
-	UserAgent  string `gorm:"size:256"`
-	Device     string `gorm:"size:64"`
+	Optionname     string                        `gorm:"size:256"`
+	AppName        string                        `gorm:"size:64"`
+	AppVersion     string                        `gorm:"size:64"`
+	Operator       string                        `gorm:"size:64"`
+	Tenant         string                        `gorm:"size:64"`
+	Uri            string                        `gorm:"size:256"`
+	Method         string                        `gorm:"size:16"`
+	VerbosityLevel monitor.TracingVerbosityLevel `gorm:"default:99"`
+	Body           []byte
+	Durtion        time.Duration
+	Status         int
+	TargetID       uint
+	Resp           []byte
+	ClientIP       string `gorm:"size:64"`
+	UserAgent      string `gorm:"size:256"`
+	Device         string `gorm:"size:64"`
 }
 
 type TracingRequestServiceDBImpl struct {
@@ -51,6 +56,14 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req monitor.TracingDetai
 		return nil
 	}
 
+	storeMax := monitor.TracingVerbosityLevelRead
+	if viper.IsSet("tracing.db.storeMaxVerbosityLevel") {
+		storeMax = monitor.TracingVerbosityLevel(viper.GetInt("tracing.db.storeMaxVerbosityLevel"))
+	}
+	if req.VerbosityLevel > storeMax {
+		return nil
+	}
+
 	// if bts, ok := req.Body.([]byte); ok {
 	// 	if resp, ok := req.Resp.([]byte); ok {
 	// 		if len(bts) == 0 && len(resp) == 0 {
@@ -72,18 +85,22 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req monitor.TracingDetai
 	// }
 
 	model := FullRequestDetails{
-		Optionname: req.Optionname,
-		Operator:   req.Operator,
-		Uri:        req.Uri,
-		Method:     req.Method,
-		Body:       req.Body,
-		Durtion:    req.Durtion,
-		Status:     req.Status,
-		TargetID:   req.TargetID,
-		Resp:       req.Resp,
-		ClientIP:   req.ClientIP,
-		UserAgent:  req.UserAgent,
-		Device:     req.Device,
+		Optionname:     req.Optionname,
+		AppName:        req.AppName,
+		AppVersion:     req.AppVersion,
+		Operator:       req.Operator,
+		Tenant:         req.Tenant,
+		Uri:            req.Uri,
+		Method:         req.Method,
+		VerbosityLevel: req.VerbosityLevel,
+		Body:           req.Body,
+		Durtion:        req.Durtion,
+		Status:         req.Status,
+		TargetID:       req.TargetID,
+		Resp:           req.Resp,
+		ClientIP:       req.ClientIP,
+		UserAgent:      req.UserAgent,
+		Device:         req.Device,
 	}
 
 	err := tr.DB.Save(&model).Error
@@ -102,4 +119,5 @@ func EnableDBMonitor() {
 		monitor.TracingAdaptor.Subscripter("db", dbm.doLogRequestBody)
 		return nil
 	})
+	enableDBCleanup()
 }
