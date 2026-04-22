@@ -7,7 +7,11 @@ type ConsoleTracing struct {
 }
 
 func (tr *ConsoleTracing) LogBody(req TracingDetails) error {
-	log := tr.Log.With(zap.String("method", req.Method), zap.String("uri", req.Uri))
+	log := tr.Log.With(
+		zap.String("method", req.Method),
+		zap.String("uri", req.Uri),
+		zap.Int("verbosityLevel", int(req.VerbosityLevel)),
+	)
 	if len(req.Body) > 0 {
 		bodyText, bodyEnc := EncodePayloadForText(req.Body)
 		log.Debug("req", zap.String("req encoding", bodyEnc), zap.String("req body", bodyText))

@@ -16,7 +16,10 @@ import (
 
 func Log(operationname string) http.RoundTripper {
 	return LogTracying(TracingDetails{
-		Optionname: operationname,
+		Optionname:     operationname,
+		AppName:        core.AppName,
+		AppVersion:     core.Version,
+		VerbosityLevel: TracingVerbosityLevelThirdParty,
 	}, nil)
 }
 
@@ -107,7 +110,11 @@ func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTri
 }
 
 func LogOutbound(rt http.RoundTripper) http.RoundTripper {
-	return LogTracying(TracingDetails{}, rt)
+	return LogTracying(TracingDetails{
+		AppName:        core.AppName,
+		AppVersion:     core.Version,
+		VerbosityLevel: TracingVerbosityLevelThirdParty,
+	}, rt)
 }
 
 // emptyBody is an instance of empty reader.

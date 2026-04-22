@@ -177,12 +177,21 @@ func (lm *LokiSetting) ReportTracing(tr monitor.TracingDetails) error {
 	header["URI"] = tr.Uri
 	header["Method"] = tr.Method
 	header["Status"] = fmt.Sprintf("%d", tr.Status)
+	header["VerbosityLevel"] = fmt.Sprintf("%d", tr.VerbosityLevel)
 	header["ClientIP"] = tr.ClientIP
 	header["UserAgent"] = tr.UserAgent
 	header["Device"] = tr.Device
 	header["operator"] = tr.Operator
-	header["app"] = core.AppName
-	header["version"] = core.Version
+	app := tr.AppName
+	if app == "" {
+		app = core.AppName
+	}
+	version := tr.AppVersion
+	if version == "" {
+		version = core.Version
+	}
+	header["app"] = app
+	header["version"] = version
 	header["tenant"] = tr.Tenant
 	bodyText, bodyEnc := monitor.EncodePayloadForText(tr.Body)
 	respText, respEnc := monitor.EncodePayloadForText(tr.Resp)
