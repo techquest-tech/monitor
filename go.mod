@@ -11,14 +11,13 @@ require (
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/parquet-go/parquet-go v0.29.0
 	github.com/spf13/viper v1.21.0
-	github.com/techquest-tech/gin-shared v0.12.1
+	github.com/techquest-tech/gin-shared v1.0.2
 	go.uber.org/zap v1.28.0
 	google.golang.org/grpc v1.81.1
 	gorm.io/gorm v1.31.1
 )
 
 require (
-	github.com/alexbrainman/odbc v0.0.0-20250601004241-49e6b2bc0cf0 // indirect
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible // indirect
 	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/asaskevich/EventBus v0.0.0-20200907212545-49d423059eef // indirect
@@ -47,7 +46,6 @@ require (
 	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.59.0 // indirect
-	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/afero/sftpfs v1.15.0 // indirect
 	github.com/techquest-tech/fsoss v0.0.1 // indirect
