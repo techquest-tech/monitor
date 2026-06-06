@@ -39,7 +39,7 @@ func EnabledMessagingBridge() {
 func RunAsAdaptor() error {
 	return core.GetContainer().Invoke(func(logger *zap.Logger, service messaging.MessagingService, _ core.Startups) {
 		ctx := core.RootCtx()
-		consumer := "monitor-adaptor"
+		consumer := core.AppName
 
 		service.Sub(ctx, tracing.Topic, consumer, tracing.Adaptor)
 		service.Sub(ctx, jobReport.Topic, consumer, jobReport.Adaptor)
