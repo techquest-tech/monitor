@@ -70,8 +70,8 @@ func (appins *ResquestMonitor) ReportScheduleJob(req schedule.JobHistory) error 
 	details := monitor.TracingDetails{
 		Uri:            req.Job,
 		Method:         "Cron",
-		AppName:        core.AppName,
-		AppVersion:     core.Version,
+		AppName:        req.App,
+		AppVersion:     req.AppVersion,
 		VerbosityLevel: monitor.TracingVerbosityLevelRead,
 		Durtion:        req.Duration,
 		Status:         status,
@@ -120,16 +120,8 @@ func (appins *ResquestMonitor) ReportTracing(tr monitor.TracingDetails) error {
 	)
 
 	t.Source = tr.ClientIP
-	app := tr.AppName
-	if app == "" {
-		app = core.AppName
-	}
-	version := tr.AppVersion
-	if version == "" {
-		version = core.Version
-	}
-	t.Properties["app"] = app
-	t.Properties["version"] = version
+	t.Properties["app"] = tr.AppName
+	t.Properties["version"] = tr.AppVersion
 	t.Properties["user-agent"] = tr.UserAgent
 	t.Properties["device"] = tr.Device
 	// if tr.Tenant != "" {

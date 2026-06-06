@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
@@ -19,6 +20,7 @@ type LokiConfig struct {
 	User        string
 	Password    string
 	Protocol    string
+	MaxBytes    int
 	Included    []string
 	Excluded    []string
 	IncludedIPs []string
@@ -44,7 +46,7 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	loki := &LokiSetting{
 		FixedHeaders: map[string]string{},
 		Logger:       logger,
-		MaxBytes:     262144,
+		MaxBytes:     240 * 1024,
 	}
 	// settings := viper.Sub("tracing.loki")
 	// if settings == nil {
@@ -65,6 +67,9 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	}
 
 	loki.Config = conf
+	if conf.MaxBytes > 0 {
+		loki.MaxBytes = conf.MaxBytes
+	}
 	loki.BaseFilter = monitor.BaseFilter{
 		Included: conf.Included,
 		Excluded: conf.Excluded,
@@ -146,20 +151,21 @@ func (lm *LokiSetting) ReportScheduleJob(req schedule.JobHistory) error {
 
 	body, _ := json.Marshal(req)
 	// lm.ch <- lokiclient.NewPushItem(header, string(body))
-	return lm.client.Push(header, string(body))
+	return lm.pushSplit(header, string(body))
 }
 
 func (lm *LokiSetting) ReportError(rr core.ErrorReport) error {
 	header := lm.cloneFixedHeader()
 	header["dataType"] = "error"
-	header["app"] = core.AppName
-	header["version"] = core.Version
+	header["app"] = rr.AppName
+	header["version"] = rr.AppVersion
 	header["uri"] = rr.Uri
 	header["message"] = rr.Error.Error()
 
-	body := string(rr.FullStack)
+	bodyText, bodyEnc := monitor.EncodePayloadForText(rr.FullStack)
+	header["stackEnc"] = bodyEnc
 	// lm.ch <- lokiclient.NewPushItem(header, body)
-	return lm.client.Push(header, body)
+	return lm.pushSplit(header, bodyText)
 }
 
 func (lm *LokiSetting) cloneFixedHeader() map[string]string {
@@ -222,13 +228,77 @@ func (lm *LokiSetting) ReportTracing(tr monitor.TracingDetails) error {
 		return err
 	}
 
-	if len(body) > lm.MaxBytes {
-		lm.Logger.Info("body truncated.", zap.Int("raw", len(body)))
-		body = body[:lm.MaxBytes-1]
-	}
-
 	// lm.ch <- lokiclient.NewPushItem(header, string(body))
-	return lm.client.Push(header, string(body))
+	return lm.pushSplit(header, string(body))
+}
+
+func splitUTF8ByBytes(s string, max int) []string {
+	if max <= 0 {
+		return []string{s}
+	}
+	b := []byte(s)
+	if len(b) <= max {
+		return []string{s}
+	}
+	out := make([]string, 0, (len(b)+max-1)/max)
+	for start := 0; start < len(b); {
+		end := start + max
+		if end >= len(b) {
+			out = append(out, string(b[start:]))
+			break
+		}
+		cut := end
+		for cut > start {
+			_, size := utf8.DecodeLastRune(b[start:cut])
+			if size == 1 && b[cut-1] >= 0x80 {
+				cut--
+				continue
+			}
+			break
+		}
+		if cut == start {
+			cut = end
+		}
+		out = append(out, string(b[start:cut]))
+		start = cut
+	}
+	return out
+}
+
+func splitWithPrefix(s string, max int) []string {
+	parts := splitUTF8ByBytes(s, max)
+	if len(parts) <= 1 {
+		return parts
+	}
+	for {
+		total := len(parts)
+		prefixLen := len(fmt.Sprintf("[part %d/%d] ", total, total))
+		if prefixLen >= max {
+			return []string{s}
+		}
+		newMax := max - prefixLen
+		newParts := splitUTF8ByBytes(s, newMax)
+		if len(newParts) == len(parts) {
+			out := make([]string, len(newParts))
+			total = len(newParts)
+			for i, p := range newParts {
+				out[i] = fmt.Sprintf("[part %d/%d] ", i+1, total) + p
+			}
+			return out
+		}
+		parts = newParts
+	}
+}
+
+func (lm *LokiSetting) pushSplit(labels map[string]string, line string) error {
+	parts := splitWithPrefix(line, lm.MaxBytes)
+	for _, p := range parts {
+		err := lm.client.Push(labels, p)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func EnableLokiMonitor() {

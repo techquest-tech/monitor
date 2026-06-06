@@ -22,10 +22,14 @@ type FullRequestDetails struct {
 	Method         string                        `gorm:"size:16"`
 	VerbosityLevel monitor.TracingVerbosityLevel `gorm:"default:99"`
 	Body           []byte
+	BodyText       string `gorm:"type:longtext"`
+	BodyEnc        string `gorm:"size:16"`
 	Durtion        time.Duration
 	Status         int
 	TargetID       uint
 	Resp           []byte
+	RespText       string `gorm:"type:longtext"`
+	RespEnc        string `gorm:"size:16"`
 	ClientIP       string `gorm:"size:64"`
 	UserAgent      string `gorm:"size:256"`
 	Device         string `gorm:"size:64"`
@@ -84,6 +88,9 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req monitor.TracingDetai
 	// 	}
 	// }
 
+	bodyText, bodyEnc := monitor.EncodePayloadForText(req.Body)
+	respText, respEnc := monitor.EncodePayloadForText(req.Resp)
+
 	model := FullRequestDetails{
 		Optionname:     req.Optionname,
 		AppName:        req.AppName,
@@ -93,11 +100,13 @@ func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req monitor.TracingDetai
 		Uri:            req.Uri,
 		Method:         req.Method,
 		VerbosityLevel: req.VerbosityLevel,
-		Body:           req.Body,
+		BodyText:       bodyText,
+		BodyEnc:        bodyEnc,
 		Durtion:        req.Durtion,
 		Status:         req.Status,
 		TargetID:       req.TargetID,
-		Resp:           req.Resp,
+		RespText:       respText,
+		RespEnc:        respEnc,
 		ClientIP:       req.ClientIP,
 		UserAgent:      req.UserAgent,
 		Device:         req.Device,

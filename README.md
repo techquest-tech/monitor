@@ -81,11 +81,19 @@ tracing:
     User: admin
     Password: secret
     Protocol: rest  # 可选: "rest" | "grpc"，缺省为 "rest"
+    MaxBytes: 245760 # 可选：单条日志行最大字节数（默认 240KiB，避免贴近 Loki 256KiB 上限）
 ```
 
 行为说明：
 - Protocol = "rest" 或缺省：优先 REST，REST 初始化失败时自动回退到 gRPC
 - Protocol = "grpc"：优先 gRPC，gRPC 初始化失败时自动回退到 REST
+
+#### Loki 行大小与二进制内容处理
+Tracing/Error/Job 推送到 Loki 时，会尽量保证内容可被 Loki 接受：
+
+- 单条日志行过大：会按 `MaxBytes` 自动拆分为多条日志（同一组 labels，不将分片序号写入 label，避免高基数）
+- Body/Resp/Stack 可能为纯二进制：会进行文本化编码（并通过 `reqEnc` / `respEnc` / `stackEnc` label 标识编码方式）
+- REST 模式出错：会把 Loki 返回的 HTTP 状态码与响应体带回到错误信息中，便于定位 400/鉴权/限额等原因
 
 ### 启动与集成 (`bootup/`)
 包含各个模块的初始化代码，利用依赖注入机制来自动装配启用的监控服务。
@@ -94,6 +102,13 @@ tracing:
 ## 数据模型
 
 *   **TracingDetails (`tracing.go`)**: 非常详尽的请求记录结构，不仅包含标准的 HTTP 信息，还包含多租户信息（Tenant, Operator）和设备信息，说明这个监控系统是为多租户 SaaS 应用设计的。
+
+### Database 数据模型 (monitor_db)
+启用 `monitor_db` 后，会自动注册 GORM 实体并订阅监控事件入库：
+
+- Tracing：`FullRequestDetails`
+- Cron Job：`JobHistoryDetails`
+- Error：`ErrorReportDetails`（其中 `error` 以 `ErrorText` 字符串持久化）
 
 ## 项目亮点
 
