@@ -28,21 +28,35 @@ type Monitor2Datapool struct {
 	Path string
 }
 
+func hasOssEnv() bool {
+	return os.Getenv("OSS_BUCKET") != "" &&
+		os.Getenv("OSS_ID") != "" &&
+		os.Getenv("OSS_SECRET") != "" &&
+		os.Getenv("OSS_ENDPOINT") != "" &&
+		os.Getenv("OSS_REGION") != ""
+}
+
 func Enabled2Datapool() {
 	core.ProvideStartup(func(logger *zap.Logger) (core.Startup, error) {
 		adaptor := &Monitor2Datapool{
-			Path: "./data/monitor", // default using mem fs only, not file oupt. but switch to OSS if uat or prd
+			Path: "./data/monitor",
 		}
 
-		env := os.Getenv("ENV")
-
 		if !viper.IsSet(SettingKey) {
-			viper.SetDefault(SettingKey+".type", "local")
+			env := os.Getenv("ENV")
+			useOss := false
 			if env == "uat" || env == "prd" {
-				viper.SetDefault(SettingKey+".type", "oss")
 				adaptor.Path = fmt.Sprintf("%s/%s/monitor", env, core.AppName)
+				useOss = hasOssEnv()
 			}
-			viper.SetDefault(SettingKey+".path", adaptor.Path)
+			cfg := map[string]any{
+				"type": "local",
+				"path": adaptor.Path,
+			}
+			if useOss {
+				cfg["type"] = "oss"
+			}
+			viper.Set(SettingKey, cfg)
 		}
 		// or ovwrite by config
 		err := viper.UnmarshalKey(SettingKey, adaptor)
@@ -83,8 +97,10 @@ func Enabled2Datapool() {
 		// error
 		trError := core.ErrorAdaptor.Sub("monitor-error")
 		scheError := parquet.NewParquetDataServiceBySchema(&parquet.ParquetSetting{
+			FsKey:           SettingKey,
 			Folder:          adaptor.Path,
-			FilenamePattern: adaptor.Path + "/errorReport/20060102/150405",
+			FilenamePattern: "errorReport/20060102/150405",
+			Ackfile:         EnabledAct,
 		}, p.SchemaOf(&ErrorReport4Parquet{}), core.ToAnyChan(trError))
 		scheError.Filter = func(msg []any) []any {
 			return lo.Map(msg, func(item any, index int) any {
