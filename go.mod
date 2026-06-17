@@ -11,7 +11,7 @@ require (
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/parquet-go/parquet-go v0.29.0
 	github.com/spf13/viper v1.21.0
-	github.com/techquest-tech/gin-shared v1.0.3
+	github.com/techquest-tech/gin-shared v1.0.7
 	go.uber.org/zap v1.28.0
 	google.golang.org/grpc v1.81.1
 	gorm.io/gorm v1.31.1
