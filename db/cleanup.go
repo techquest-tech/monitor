@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func enableDBCleanup() {
+func init() {
 	core.ProvideStartup(func(logger *zap.Logger, db *gorm.DB) core.Startup {
 		settings := viper.Sub("tracing.db.cleanup")
 		scheduleStr := ""
