@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/push"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 type GrpcClient struct {
-	client logproto.PusherClient
+	client push.PusherClient
 	conn   *grpc.ClientConn
 }
 
@@ -60,7 +60,7 @@ func NewGrpcClient(conf *LokiConfig) (*GrpcClient, error) {
 		return nil, err
 	}
 
-	client := logproto.NewPusherClient(conn)
+	client := push.NewPusherClient(conn)
 
 	return &GrpcClient{
 		client: client,
@@ -75,11 +75,11 @@ func (c *GrpcClient) Close() error {
 func (c *GrpcClient) Push(labels map[string]string, line string) error {
 	labelString := formatLabels(labels)
 
-	req := &logproto.PushRequest{
-		Streams: []logproto.Stream{
+	req := &push.PushRequest{
+		Streams: []push.Stream{
 			{
 				Labels: labelString,
-				Entries: []logproto.Entry{
+				Entries: []push.Entry{
 					{
 						Timestamp: time.Now(),
 						Line:      line,
