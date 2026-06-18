@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/spf13/viper"
@@ -40,6 +41,55 @@ type LokiSetting struct {
 type LokiClient interface {
 	Push(labels map[string]string, line string) error
 	Close() error
+}
+
+// setLokiLabel 写入 Loki label。
+// labels: 目标 label 集合。
+// key: 原始 label 名称。
+// value: 原始 label 值。
+// 返回值：无。
+func setLokiLabel(labels map[string]string, key string, value string) {
+	normalizedKey := normalizeLokiLabelName(key)
+	if normalizedKey == "" {
+		return
+	}
+	trimmedValue := strings.TrimSpace(value)
+	if trimmedValue == "" {
+		return
+	}
+	labels[normalizedKey] = trimmedValue
+}
+
+// normalizeLokiLabelName 将 label 名规范化为 Loki 可接受的格式。
+// key: 原始 label 名称。
+// 返回值：返回仅包含字母、数字、下划线，且首字符不为数字的小写 label 名。
+func normalizeLokiLabelName(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(key))
+	for _, r := range key {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r):
+			builder.WriteRune(unicode.ToLower(r))
+		case r == '_':
+			builder.WriteRune(r)
+		default:
+			builder.WriteRune('_')
+		}
+	}
+
+	normalized := strings.Trim(builder.String(), "_")
+	if normalized == "" {
+		return ""
+	}
+	if normalized[0] >= '0' && normalized[0] <= '9' {
+		normalized = "_" + normalized
+	}
+	return normalized
 }
 
 func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
@@ -123,20 +173,20 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 		client.Close()
 	})
 
-	loki.FixedHeaders["app"] = core.AppName
-	loki.FixedHeaders["version"] = core.Version
+	setLokiLabel(loki.FixedHeaders, "app", core.AppName)
+	setLokiLabel(loki.FixedHeaders, "version", core.Version)
 
 	// uid := rand.Intn(99999999)
 	// loki.FixedHeaders[""] = fmt.Sprintf("%08d", uid)
 
 	hostname, _ := os.Hostname()
-	loki.FixedHeaders["hostname"] = hostname
+	setLokiLabel(loki.FixedHeaders, "hostname", hostname)
 
 	envfile := os.Getenv("ENV")
 	if envfile == "" {
 		envfile = "default"
 	}
-	loki.FixedHeaders["ENV"] = envfile
+	setLokiLabel(loki.FixedHeaders, "env", envfile)
 
 	logger.Info("Loki monitor service is ready.")
 	return loki, nil
@@ -144,10 +194,10 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 
 func (lm *LokiSetting) ReportScheduleJob(req schedule.JobHistory) error {
 	header := lm.cloneFixedHeader()
-	header["dataType"] = "cronJob"
-	header["app"] = req.App
-	header["succeed"] = strconv.FormatBool(req.Succeed)
-	header["job"] = req.Job
+	setLokiLabel(header, "data_type", "cron_job")
+	setLokiLabel(header, "app", req.App)
+	setLokiLabel(header, "succeed", strconv.FormatBool(req.Succeed))
+	setLokiLabel(header, "job", req.Job)
 
 	body, _ := json.Marshal(req)
 	// lm.ch <- lokiclient.NewPushItem(header, string(body))
@@ -156,14 +206,12 @@ func (lm *LokiSetting) ReportScheduleJob(req schedule.JobHistory) error {
 
 func (lm *LokiSetting) ReportError(rr core.ErrorReport) error {
 	header := lm.cloneFixedHeader()
-	header["dataType"] = "error"
-	header["app"] = rr.AppName
-	header["version"] = rr.AppVersion
-	header["uri"] = rr.Uri
-	header["message"] = rr.Error.Error()
+	setLokiLabel(header, "data_type", "error")
+	setLokiLabel(header, "app", rr.AppName)
+	setLokiLabel(header, "version", rr.AppVersion)
 
 	bodyText, bodyEnc := monitor.EncodePayloadForText(rr.FullStack)
-	header["stackEnc"] = bodyEnc
+	setLokiLabel(header, "stack_enc", bodyEnc)
 	// lm.ch <- lokiclient.NewPushItem(header, body)
 	return lm.pushSplit(header, bodyText)
 }
@@ -178,16 +226,12 @@ func (lm *LokiSetting) cloneFixedHeader() map[string]string {
 
 func (lm *LokiSetting) ReportTracing(tr monitor.TracingDetails) error {
 	header := lm.cloneFixedHeader()
-	header["dataType"] = "tracing"
-	header["Optionname"] = tr.Optionname
-	header["URI"] = tr.Uri
-	header["Method"] = tr.Method
-	header["Status"] = fmt.Sprintf("%d", tr.Status)
-	header["VerbosityLevel"] = fmt.Sprintf("%d", tr.VerbosityLevel)
-	header["ClientIP"] = tr.ClientIP
-	header["UserAgent"] = tr.UserAgent
-	header["Device"] = tr.Device
-	header["operator"] = tr.Operator
+	setLokiLabel(header, "data_type", "tracing")
+	// optionname 属于业务侧强诉求的查询维度，保留在 label 中便于按功能点聚合检索。
+	setLokiLabel(header, "optionname", tr.Optionname)
+	setLokiLabel(header, "method", tr.Method)
+	setLokiLabel(header, "status", fmt.Sprintf("%d", tr.Status))
+	setLokiLabel(header, "verbosity_level", fmt.Sprintf("%d", tr.VerbosityLevel))
 	app := tr.AppName
 	if app == "" {
 		app = core.AppName
@@ -196,21 +240,13 @@ func (lm *LokiSetting) ReportTracing(tr monitor.TracingDetails) error {
 	if version == "" {
 		version = core.Version
 	}
-	header["app"] = app
-	header["version"] = version
-	header["tenant"] = tr.Tenant
-	bodyText, bodyEnc := monitor.EncodePayloadForText(tr.Body)
-	respText, respEnc := monitor.EncodePayloadForText(tr.Resp)
-
-	if tr.BodyEnc != "" {
-		bodyEnc = tr.BodyEnc
-	}
-	if tr.RespEnc != "" {
-		respEnc = tr.RespEnc
-	}
-
-	header["reqEnc"] = bodyEnc
-	header["respEnc"] = respEnc
+	setLokiLabel(header, "app", app)
+	setLokiLabel(header, "version", version)
+	setLokiLabel(header, "tenant", tr.Tenant)
+	bodyText, _ := monitor.EncodePayloadForText(tr.Body)
+	respText, _ := monitor.EncodePayloadForText(tr.Resp)
+	// reqEnc/respEnc 不再作为 label 发送，避免 label 数量过多或引入额外维度导致写入被拒绝。
+	// 编码信息仍会保留在正文（TracingDetails.BodyEnc/RespEnc）中，便于后续解析与排查。
 
 	lokiTr := struct {
 		monitor.TracingDetails

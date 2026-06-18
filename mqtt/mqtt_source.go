@@ -104,7 +104,7 @@ func (ms *MqttSource) onMessage(client mqtt.Client, msg mqtt.Message) {
 	monitor.TracingAdaptor.Push(details)
 }
 
-func EnableMqttSource() {
+func init() {
 	core.Provide(NewMqttSource)
 	core.ProvideStartup(func(ms *MqttSource) core.Startup {
 		if ms != nil {

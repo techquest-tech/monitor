@@ -2,8 +2,8 @@
 
 package bootup
 
-import "github.com/techquest-tech/monitor/mqtt"
+import _ "github.com/techquest-tech/monitor/mqtt"
 
-func init() {
-	mqtt.EnableMqttSource()
-}
+// func init() {
+// 	mqtt.EnableMqttSource()
+// }

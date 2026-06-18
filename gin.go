@@ -4,13 +4,19 @@ import (
 	"bytes"
 	"io"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/techquest-tech/gin-shared/pkg/auth"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"go.uber.org/zap"
+)
+
+const (
+	// ginContextKeyCurrentUser 兼容 gin-shared/auth 中间件写入的当前用户上下文键。
+	// 这里直接使用常量，避免仅因 import auth 包触发其 init() 注册数据库实体。
+	ginContextKeyCurrentUser = "currentUser"
 )
 
 type GinTracingService struct {
@@ -29,6 +35,42 @@ func (tr *GinTracingService) OnEngineInited(r *gin.Engine) error {
 // 	return nil
 // }
 
+// extractTracingUser 从 gin 上下文提取租户和操作人。
+// c: 当前请求上下文。
+// 返回值：tenant 为租户，operator 为操作人；当未命中时返回空字符串。
+func extractTracingUser(c *gin.Context) (tenant string, operator string) {
+	if obj, ok := c.Get(ginContextKeyCurrentUser); ok {
+		value := reflect.ValueOf(obj)
+		if value.IsValid() {
+			if value.Kind() == reflect.Pointer {
+				if value.IsNil() {
+					return "", ""
+				}
+				value = value.Elem()
+			}
+			// 兼容 *auth.AuthKey 等结构体对象，但不直接依赖具体包类型。
+			if value.Kind() == reflect.Struct {
+				ownerField := value.FieldByName("Owner")
+				if ownerField.IsValid() && ownerField.Kind() == reflect.String {
+					tenant = ownerField.String()
+				}
+				userNameField := value.FieldByName("UserName")
+				if userNameField.IsValid() && userNameField.Kind() == reflect.String {
+					operator = userNameField.String()
+				}
+				if tenant != "" || operator != "" {
+					return tenant, operator
+				}
+			}
+		}
+	}
+
+	return c.GetString("owner"), c.GetString("user")
+}
+
+// LogfullRequestDetails 记录 gin 请求与响应的 tracing 详情。
+// c: 当前请求上下文。
+// 返回值：无。
 func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
 	startAt := time.Now()
 	userAgent := c.Request.UserAgent()
@@ -116,19 +158,12 @@ func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
 		StartedAt:      startAt,
 	}
 
-	if obj, ok := c.Get(auth.KeyUser); ok {
-		currentUser := obj.(*auth.AuthKey)
-		fullLogging.Tenant = currentUser.Owner
-		fullLogging.Operator = currentUser.UserName
-	} else {
-		tenant := c.GetString("owner")
-		if tenant != "" {
-			fullLogging.Tenant = tenant
-		}
-		currentUser := c.GetString("user")
-		if currentUser != "" {
-			fullLogging.Operator = currentUser
-		}
+	tenant, operator := extractTracingUser(c)
+	if tenant != "" {
+		fullLogging.Tenant = tenant
+	}
+	if operator != "" {
+		fullLogging.Operator = operator
 	}
 
 	TracingAdaptor.Push(fullLogging)
