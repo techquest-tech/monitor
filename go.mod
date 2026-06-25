@@ -11,7 +11,7 @@ require (
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/parquet-go/parquet-go v0.30.1
 	github.com/spf13/viper v1.21.0
-	github.com/techquest-tech/gin-shared v1.0.7
+	github.com/techquest-tech/gin-shared v1.0.9
 	go.uber.org/zap v1.28.0
 	google.golang.org/grpc v1.81.1
 	gorm.io/gorm v1.31.1
@@ -27,6 +27,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.9.2 // indirect
@@ -44,6 +45,7 @@ require (
 	github.com/quic-go/quic-go v0.59.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/afero/sftpfs v1.15.0 // indirect
+	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/techquest-tech/fsoss v0.0.1 // indirect
 	github.com/twpayne/go-geom v1.6.1 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
