@@ -1,4 +1,4 @@
-//go:build monitor_default || monitor_mqtt
+//go:build monitor_mqtt
 
 package bootup
 
