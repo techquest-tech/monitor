@@ -11,9 +11,9 @@ require (
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/parquet-go/parquet-go v0.30.1
 	github.com/spf13/viper v1.21.0
-	github.com/techquest-tech/gin-shared v1.0.12
+	github.com/techquest-tech/gin-shared v1.0.13
 	go.uber.org/zap v1.28.0
-	google.golang.org/grpc v1.81.1
+	google.golang.org/grpc v1.83.0
 	gorm.io/gorm v1.31.2
 )
 
@@ -53,7 +53,7 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260504160031-60b97b32f348 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	gorm.io/driver/postgres v1.6.0 // indirect
 )
 

@@ -41,6 +41,16 @@ type TracingRequestServiceDBImpl struct {
 	Logger *zap.Logger
 }
 
+// ErrorReportDetails 错误上报落库模型，对应表 prd_error_report_details / uat_error_report_details
+// （gorm 默认命名：error_text / full_stack / happend_at，与 README monitor_db 数据模型一致）。
+type ErrorReportDetails struct {
+	gorm.Model
+	Uri       string    `gorm:"size:256"`
+	FullStack []byte
+	ErrorText string    `gorm:"size:2048"`
+	HappendAT time.Time
+}
+
 func NewTracingRequestService(db *gorm.DB, logger *zap.Logger) (*TracingRequestServiceDBImpl, error) {
 	gormLogLevel := "error"
 	if viper.IsSet("tracing.db.gorm.logLevel") {
@@ -181,6 +191,119 @@ func (tr *TracingRequestServiceDBImpl) startBatchWriter(ch chan monitor.TracingD
 	}()
 }
 
+func (tr *TracingRequestServiceDBImpl) buildErrorModel(rr core.ErrorReport) (*ErrorReportDetails, bool) {
+	errText := ""
+	if rr.Error != nil {
+		errText = rr.Error.Error()
+	}
+	// 空错误（无文案、无堆栈、无 URI）无落库价值
+	if errText == "" && len(rr.FullStack) == 0 && rr.Uri == "" {
+		return nil, false
+	}
+	uri := truncateRunes(rr.Uri, 256)
+	errText = truncateRunes(errText, 2048)
+	happend := rr.HappendAT
+	if happend.IsZero() {
+		// 上游未上报时间（如 monitor.Log 链路 HappendAT 为零值），MySQL datetime(3) 不支持 0001-01-01，
+		// 回退到当前时间保证可落库
+		happend = time.Now()
+	}
+	return &ErrorReportDetails{
+		Uri:       uri,
+		FullStack: rr.FullStack,
+		ErrorText: errText,
+		HappendAT: happend,
+	}, true
+}
+
+// truncateRunes 按字符数截断，避免超出 varchar 列上限导致整批插入失败。
+func truncateRunes(s string, max int) string {
+	if max <= 0 || len([]rune(s)) <= max {
+		return s
+	}
+	return string([]rune(s)[:max])
+}
+
+func (tr *TracingRequestServiceDBImpl) startErrorBatchWriter(ch chan core.ErrorReport) {
+	batchSize := 100
+	if viper.IsSet("tracing.db.error.batch.size") {
+		batchSize = viper.GetInt("tracing.db.error.batch.size")
+	}
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+
+	flushInterval := 10 * time.Second
+	if viper.IsSet("tracing.db.error.batch.flushInterval") {
+		if d := viper.GetDuration("tracing.db.error.batch.flushInterval"); d > 0 {
+			flushInterval = d
+		}
+	} else if viper.IsSet("tracing.db.error.batch.flushIntervalSec") {
+		if sec := viper.GetInt("tracing.db.error.batch.flushIntervalSec"); sec > 0 {
+			flushInterval = time.Duration(sec) * time.Second
+		}
+	}
+
+	queueSize := 10000
+	if viper.IsSet("tracing.db.error.batch.queueSize") {
+		queueSize = viper.GetInt("tracing.db.error.batch.queueSize")
+	} else if batchSize > 0 {
+		queueSize = batchSize * 100
+		if queueSize < 10000 {
+			queueSize = 10000
+		}
+	}
+	if queueSize <= 0 {
+		queueSize = 10000
+	}
+
+	queue := make(chan core.ErrorReport, queueSize)
+
+	tr.Logger.Info("db error batch writer enabled",
+		zap.Int("batchSize", batchSize),
+		zap.Duration("flushInterval", flushInterval),
+		zap.Int("queueSize", queueSize),
+	)
+
+	go func() {
+		for v := range ch {
+			queue <- v
+		}
+		close(queue)
+	}()
+
+	go func() {
+		for {
+			items, length, _, ok := lo.BufferWithTimeout(queue, batchSize, flushInterval)
+			if length == 0 && ok {
+				continue
+			}
+
+			models := make([]ErrorReportDetails, 0, length)
+			for _, item := range items {
+				model, keep := tr.buildErrorModel(item)
+				if !keep {
+					continue
+				}
+				models = append(models, *model)
+			}
+
+			if len(models) > 0 {
+				err := tr.DB.CreateInBatches(models, batchSize).Error
+				if err != nil {
+					tr.Logger.Error("batch insert error report details failed", zap.Error(err), zap.Int("count", len(models)))
+				} else {
+					tr.Logger.Info("batch insert error report details done", zap.Int("count", len(models)))
+				}
+			}
+
+			if !ok {
+				return
+			}
+		}
+	}()
+}
+
 // func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req monitor.TracingDetails) error {
 // 	model, keep := tr.buildRequestModel(req)
 // 	if !keep {
@@ -197,11 +320,16 @@ func (tr *TracingRequestServiceDBImpl) startBatchWriter(ch chan monitor.TracingD
 
 func EnableDBMonitor() {
 	orm.AppendEntity(&FullRequestDetails{})
+	orm.AppendEntity(&ErrorReportDetails{})
 	core.Provide(NewTracingRequestService)
 	core.ProvideStartup(func(dbm *TracingRequestServiceDBImpl) core.Startup {
 		ch := monitor.TracingAdaptor.Sub("db")
 		if ch != nil {
 			dbm.startBatchWriter(ch)
+		}
+		errCh := core.ErrorAdaptor.Sub("db")
+		if errCh != nil {
+			dbm.startErrorBatchWriter(errCh)
 		}
 		return nil
 	})
