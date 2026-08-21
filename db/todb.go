@@ -320,16 +320,22 @@ func (tr *TracingRequestServiceDBImpl) startErrorBatchWriter(ch chan core.ErrorR
 
 func EnableDBMonitor() {
 	orm.AppendEntity(&FullRequestDetails{})
-	orm.AppendEntity(&ErrorReportDetails{})
 	core.Provide(NewTracingRequestService)
 	core.ProvideStartup(func(dbm *TracingRequestServiceDBImpl) core.Startup {
 		ch := monitor.TracingAdaptor.Sub("db")
 		if ch != nil {
 			dbm.startBatchWriter(ch)
 		}
-		errCh := core.ErrorAdaptor.Sub("db")
-		if errCh != nil {
-			dbm.startErrorBatchWriter(errCh)
+
+		// 错误落库开关：默认关闭，避免影响所有启用 monitor_db 的消费方。
+		// 仅当配置 tracing.db.error.enabled=true 时才注册错误实体并订阅 core.ErrorAdaptor，
+		// 保证错误只在唯一一处（当前为 monitor-adaptor）统一写入。
+		if viper.GetBool("tracing.db.error.enabled") {
+			orm.AppendEntity(&ErrorReportDetails{})
+			errCh := core.ErrorAdaptor.Sub("db")
+			if errCh != nil {
+				dbm.startErrorBatchWriter(errCh)
+			}
 		}
 		return nil
 	})
