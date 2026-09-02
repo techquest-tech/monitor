@@ -14,8 +14,9 @@ import (
 )
 
 type GrpcClient struct {
-	client push.PusherClient
-	conn   *grpc.ClientConn
+	client  push.PusherClient
+	conn    *grpc.ClientConn
+	timeout time.Duration
 }
 
 // BasicAuthCreds implements credentials.PerRPCCredentials for Basic Auth
@@ -63,8 +64,9 @@ func NewGrpcClient(conf *LokiConfig) (*GrpcClient, error) {
 	client := push.NewPusherClient(conn)
 
 	return &GrpcClient{
-		client: client,
-		conn:   conn,
+		client:  client,
+		conn:    conn,
+		timeout: 5 * time.Second,
 	}, nil
 }
 
@@ -72,38 +74,41 @@ func (c *GrpcClient) Close() error {
 	return c.conn.Close()
 }
 
-func (c *GrpcClient) Push(labels map[string]string, line string) error {
-	labelString := formatLabels(labels)
-
-	req := &push.PushRequest{
-		Streams: []push.Stream{
-			{
-				Labels: labelString,
-				Entries: []push.Entry{
-					{
-						Timestamp: time.Now(),
-						Line:      line,
-					},
-				},
-			},
-		},
+// PushBatch writes one or more log lines in a single gRPC push request. Retry
+// is intentionally left to the caller (LokiSetting.pushBatch) so there is a
+// single, consistent retry/backoff policy for both REST and gRPC clients.
+func (c *GrpcClient) PushBatch(entries []PushEntry) error {
+	if len(entries) == 0 {
+		return nil
 	}
 
-	var err error
-	backoff := 100 * time.Millisecond
-	for attempt := 0; attempt < 3; attempt++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_, err = c.client.Push(ctx, req)
-		cancel()
-		if err == nil {
-			return nil
+	index := make(map[string]int, 1)
+	streams := make([]push.Stream, 0, 1)
+	for _, e := range entries {
+		key := formatLabels(e.Labels)
+		i, ok := index[key]
+		if !ok {
+			i = len(streams)
+			index[key] = i
+			streams = append(streams, push.Stream{Labels: key})
 		}
-		time.Sleep(backoff)
-		backoff *= 2
+		streams[i].Entries = append(streams[i].Entries, push.Entry{
+			Timestamp: e.Ts,
+			Line:      e.Line,
+		})
 	}
+
+	req := &push.PushRequest{Streams: streams}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	_, err := c.client.Push(ctx, req)
 	return err
 }
 
+// formatLabels renders a label set as a deterministic, sorted Loki label string
+// (e.g. {app="x",env="y"}). It doubles as the gRPC Labels field and as a stable
+// grouping key for batch entries sharing the same label set.
 func formatLabels(labels map[string]string) string {
 	var kv []string
 	for k, v := range labels {

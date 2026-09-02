@@ -222,7 +222,10 @@ var InitTracingService = func(logger *zap.Logger) *TracingRequestService {
 	return sr
 }
 
-var TracingAdaptor = core.NewChanAdaptor[TracingDetails](10000)
+// TracingAdaptor is the global adaptor for tracing details.
+// Defaults to the in-process chan implementation; a process can swap it for a
+// redis-streaming adaptor (see messaging.NewRedisAdaptor) before services start.
+var TracingAdaptor core.Adaptor[TracingDetails] = core.NewChanAdaptor[TracingDetails](10000)
 
 func init() {
 	core.Provide(InitTracingService)

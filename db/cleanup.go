@@ -1,14 +1,29 @@
 package db
 
 import (
+	"context"
 	"time"
 
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
-	"github.com/techquest-tech/gin-shared/pkg/schedule"
+	"github.com/techquest-tech/monitor/cleanup"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
+
+// tracingCleaner 实现 cleanup.Cleaner：按 verbosity 分档删除 FullRequestDetails
+// （时间列 created_at，gorm.Model 的创建时间）。
+type tracingCleaner struct {
+	db *gorm.DB
+}
+
+// CleanTier 删除 created_at <= cutoff 且 verbosity_level ∈ (minExclusive, max] 的记录。
+func (c *tracingCleaner) CleanTier(ctx context.Context, minExclusive, max int, cutoff time.Time) (int64, error) {
+	result := c.db.WithContext(ctx).Unscoped().
+		Where("created_at <= ? AND verbosity_level > ? AND verbosity_level <= ?", cutoff, minExclusive, max).
+		Delete(&FullRequestDetails{})
+	return result.RowsAffected, result.Error
+}
 
 func init() {
 	core.ProvideStartup(func(logger *zap.Logger, db *gorm.DB) core.Startup {
@@ -21,37 +36,10 @@ func init() {
 			scheduleStr = "11 2 * * 0"
 		}
 
-		err := schedule.CreateSchedule("monitor_db_cleanup", scheduleStr, func() {
-			now := time.Now()
-
-			cutoff0to10 := now.AddDate(0, -6, 0)
-			cutoff10to50 := now.AddDate(0, 0, -14)
-			cutoff50plus := now.AddDate(0, 0, -3)
-
-			result := db.Unscoped().
-				Where("created_at <= ? AND verbosity_level <= ?", cutoff0to10, 10).
-				Delete(&FullRequestDetails{})
-			if result.Error != nil {
-				logger.Error("delete data failed", zap.Error(result.Error), zap.Int("minLevel", 0), zap.Int("maxLevel", 10))
-				return
-			}
-
-			result = db.Unscoped().
-				Where("created_at <= ? AND verbosity_level > ? AND verbosity_level <= ?", cutoff10to50, 10, 50).
-				Delete(&FullRequestDetails{})
-			if result.Error != nil {
-				logger.Error("delete data failed", zap.Error(result.Error), zap.Int("minLevel", 11), zap.Int("maxLevel", 50))
-				return
-			}
-
-			result = db.Unscoped().
-				Where("created_at <= ? AND verbosity_level > ?", cutoff50plus, 50).
-				Delete(&FullRequestDetails{})
-			if result.Error != nil {
-				logger.Error("delete data failed", zap.Error(result.Error), zap.Int("minLevel", 51))
-				return
-			}
-		})
+		// 分级保留策略与调度由共用模块 monitor/cleanup 统一提供
+		// （verbosity ≤10 → 6 个月；11-50 → 14 天；>50 → 3 天）。
+		err := cleanup.RegisterScheduledCleanup(logger, "monitor_db_cleanup", scheduleStr,
+			&tracingCleaner{db: db}, cleanup.DefaultTracingPolicy())
 		if err != nil {
 			logger.Error("schedule db cleanup job failed", zap.Error(err))
 		}

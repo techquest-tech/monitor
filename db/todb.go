@@ -111,7 +111,7 @@ func (tr *TracingRequestServiceDBImpl) buildRequestModel(req monitor.TracingDeta
 	return model, true
 }
 
-func (tr *TracingRequestServiceDBImpl) startBatchWriter(ch chan monitor.TracingDetails) {
+func (tr *TracingRequestServiceDBImpl) startBatchWriter(ch <-chan monitor.TracingDetails) {
 	batchSize := 100
 	if viper.IsSet("tracing.db.batch.size") {
 		batchSize = viper.GetInt("tracing.db.batch.size")
@@ -224,7 +224,7 @@ func truncateRunes(s string, max int) string {
 	return string([]rune(s)[:max])
 }
 
-func (tr *TracingRequestServiceDBImpl) startErrorBatchWriter(ch chan core.ErrorReport) {
+func (tr *TracingRequestServiceDBImpl) startErrorBatchWriter(ch <-chan core.ErrorReport) {
 	batchSize := 100
 	if viper.IsSet("tracing.db.error.batch.size") {
 		batchSize = viper.GetInt("tracing.db.error.batch.size")

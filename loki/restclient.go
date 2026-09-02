@@ -16,6 +16,7 @@ import (
 type RestClient struct {
 	endpoint string
 	auth     string
+	timeout  time.Duration
 }
 
 func NewRestClient(conf *LokiConfig) (*RestClient, error) {
@@ -28,6 +29,7 @@ func NewRestClient(conf *LokiConfig) (*RestClient, error) {
 	return &RestClient{
 		endpoint: url,
 		auth:     auth,
+		timeout:  5 * time.Second,
 	}, nil
 }
 
@@ -41,19 +43,34 @@ type lokiJSONBody struct {
 	Streams []lokiJSONStream `json:"streams"`
 }
 
-func (c *RestClient) Push(labels map[string]string, line string) error {
-	ts := strconv.FormatInt(time.Now().UnixNano(), 10)
-	body := lokiJSONBody{
-		Streams: []lokiJSONStream{
-			{
-				Stream: labels,
-				Values: [][]string{
-					{ts, line},
-				},
-			},
-		},
+// PushBatch writes one or more log lines in a single HTTP request. Entries that
+// share the same label set are grouped into one stream so the payload stays
+// compact and the request count (the thing that trips Loki rate limits) is
+// minimized.
+func (c *RestClient) PushBatch(entries []PushEntry) error {
+	if len(entries) == 0 {
+		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+	index := make(map[string]int, 1)
+	streams := make([]lokiJSONStream, 0, 1)
+	for _, e := range entries {
+		key := formatLabels(e.Labels)
+		i, ok := index[key]
+		if !ok {
+			i = len(streams)
+			index[key] = i
+			streams = append(streams, lokiJSONStream{Stream: e.Labels})
+		}
+		streams[i].Values = append(streams[i].Values, []string{
+			strconv.FormatInt(e.Ts.UnixNano(), 10),
+			e.Line,
+		})
+	}
+
+	body := lokiJSONBody{Streams: streams}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 	var status int
 	var respBody []byte

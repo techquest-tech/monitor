@@ -2,6 +2,7 @@ package loki
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -29,6 +30,9 @@ type LokiConfig struct {
 	IncludedIPs                 []string
 	ExcludedIPs                 []string
 	QueueSize                   int
+	BatchSize                   int
+	BatchMaxBytes               int
+	BatchFlushIntervalMS        int
 	WritePauseMS                int
 	StartupPauseMS              int
 	StartupSlowStartSeconds     int
@@ -41,7 +45,7 @@ type LokiConfig struct {
 // labels: 本条日志的 Loki labels。
 // line: 待写入的正文内容。
 // source: 数据来源，用于定位是哪类日志触发了写入。
-// enqueuedAt: 入队时间，用于观测排队耗时。
+// enqueuedAt: 入队时间，既用于观测排队耗时，也作为该日志的 Loki 时间戳。
 type lokiPushItem struct {
 	labels     map[string]string
 	line       string
@@ -49,8 +53,15 @@ type lokiPushItem struct {
 	enqueuedAt time.Time
 }
 
+// PushEntry 是批量写入中的单条日志，由 lokiPushItem 拆分后生成。
+type PushEntry struct {
+	Labels map[string]string
+	Line   string
+	Ts     time.Time
+}
+
 // LokiSetting 管理 Loki 写入配置、缓存队列与后台消费协程。
-// 该类型负责把业务线程的同步直推改为“先缓存、再限速写入”。
+// 该类型负责把业务线程的同步直推改为「先缓存、再批量限速写入」。
 type LokiSetting struct {
 	monitor.BaseFilter
 	// monitor.AppSettings
@@ -63,6 +74,9 @@ type LokiSetting struct {
 	workerDone           chan struct{}
 	queueMu              sync.RWMutex
 	queueClosed          bool
+	batchSize            int
+	batchMaxBytes        int
+	batchFlushInterval   time.Duration
 	writePause           time.Duration
 	startupPause         time.Duration
 	startupSlowWindow    time.Duration
@@ -70,13 +84,18 @@ type LokiSetting struct {
 	maxRetryPause        time.Duration
 	shutdownFlushTimeout time.Duration
 	startedAt            time.Time
+
+	// currentPause 是自适应写间隔：健康时逐步缩短、遇 429/5xx 时逐步拉长。
+	// 仅由 writer 协程读写，无需加锁。
+	currentPause time.Duration
+	minPause     time.Duration
 }
 
 // LokiClient 抽象出 REST/gRPC 两种 Loki 客户端。
-// Push: 按 labels 与正文写入一条日志。
+// PushBatch: 批量写入一组日志（同 label 的日志聚合到同一 stream）。
 // Close: 释放底层连接资源。
 type LokiClient interface {
-	Push(labels map[string]string, line string) error
+	PushBatch(entries []PushEntry) error
 	Close() error
 }
 
@@ -154,6 +173,9 @@ func pickDurationBySeconds(valueSeconds int, fallback time.Duration) time.Durati
 // isRetryableLokiError 判断错误是否适合做退避重试。
 // err: Loki 推送返回的错误。
 // 返回值：true 表示可重试，false 表示应直接丢弃并记录错误。
+//
+// 注意：REST/gRPC 客户端的超时错误是 "context deadline exceeded"（不含
+// "timeout" 子串），必须单独匹配，否则超时会被误判为不可重试而直接丢数据。
 func isRetryableLokiError(err error) bool {
 	if err == nil {
 		return false
@@ -162,10 +184,12 @@ func isRetryableLokiError(err error) bool {
 	return strings.Contains(msg, "429") ||
 		strings.Contains(msg, "too many requests") ||
 		strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "deadline exceeded") ||
 		strings.Contains(msg, "temporarily unavailable") ||
 		strings.Contains(msg, "connection reset") ||
 		strings.Contains(msg, "broken pipe") ||
-		strings.Contains(msg, "eof")
+		strings.Contains(msg, "eof") ||
+		strings.Contains(msg, "status=5") // 500/502/503/504 等瞬时服务端错误可重试
 }
 
 // cloneLabels 复制一份 labels，避免入队后被后续逻辑修改。
@@ -188,14 +212,8 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 		Logger:       logger,
 		MaxBytes:     240 * 1024,
 	}
-	// settings := viper.Sub("tracing.loki")
-	// if settings == nil {
-	// 	logger.Info("no loki client config. return nil")
-	// 	return nil, nil
-	// }
 	conf := &LokiConfig{}
-	// logger.Info("connect to loki", zap.String("loki", settings.GetString("URL")))
-	err := viper.UnmarshalKey("tracing.loki", conf) //settings.Unmarshal(conf)
+	err := viper.UnmarshalKey("tracing.loki", conf)
 	if err != nil {
 		logger.Error("loki config error.", zap.Error(err))
 		return nil, err
@@ -216,6 +234,15 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	}
 	loki.queue = make(chan lokiPushItem, queueSize)
 	loki.workerDone = make(chan struct{})
+	loki.batchSize = conf.BatchSize
+	if loki.batchSize <= 0 {
+		loki.batchSize = 200
+	}
+	loki.batchMaxBytes = conf.BatchMaxBytes
+	if loki.batchMaxBytes <= 0 {
+		loki.batchMaxBytes = 1024 * 1024
+	}
+	loki.batchFlushInterval = pickDurationByMillis(conf.BatchFlushIntervalMS, 1000*time.Millisecond)
 	loki.writePause = pickDurationByMillis(conf.WritePauseMS, 80*time.Millisecond)
 	loki.startupPause = pickDurationByMillis(conf.StartupPauseMS, 250*time.Millisecond)
 	loki.startupSlowWindow = pickDurationBySeconds(conf.StartupSlowStartSeconds, 120*time.Second)
@@ -223,6 +250,8 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 	loki.maxRetryPause = pickDurationByMillis(conf.MaxRetryPauseMS, 15*time.Second)
 	loki.shutdownFlushTimeout = pickDurationBySeconds(conf.ShutdownFlushTimeoutSeconds, 4*time.Second)
 	loki.startedAt = time.Now()
+	loki.currentPause = loki.writePause
+	loki.minPause = 20 * time.Millisecond
 	loki.BaseFilter = monitor.BaseFilter{
 		Included: conf.Included,
 		Excluded: conf.Excluded,
@@ -271,6 +300,9 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 		zap.Strings("included", conf.Included),
 		zap.Strings("excluded", conf.Excluded),
 		zap.Int("queueSize", queueSize),
+		zap.Int("batchSize", loki.batchSize),
+		zap.Int("batchMaxBytes", loki.batchMaxBytes),
+		zap.Duration("batchFlushInterval", loki.batchFlushInterval),
 		zap.Duration("writePause", loki.writePause),
 		zap.Duration("startupPause", loki.startupPause),
 		zap.Duration("startupSlowWindow", loki.startupSlowWindow),
@@ -285,9 +317,6 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 
 	setLokiLabel(loki.FixedHeaders, "app", core.AppName)
 	setLokiLabel(loki.FixedHeaders, "version", core.Version)
-
-	// uid := rand.Intn(99999999)
-	// loki.FixedHeaders[""] = fmt.Sprintf("%08d", uid)
 
 	hostname, _ := os.Hostname()
 	setLokiLabel(loki.FixedHeaders, "hostname", hostname)
@@ -365,8 +394,6 @@ func (lm *LokiSetting) ReportTracing(tr monitor.TracingDetails) error {
 	setLokiLabel(header, "tenant", tr.Tenant)
 	bodyText, _ := monitor.EncodePayloadForText(tr.Body)
 	respText, _ := monitor.EncodePayloadForText(tr.Resp)
-	// reqEnc/respEnc 不再作为 label 发送，避免 label 数量过多或引入额外维度导致写入被拒绝。
-	// 编码信息仍会保留在正文（TracingDetails.BodyEnc/RespEnc）中，便于后续解析与排查。
 
 	lokiTr := struct {
 		monitor.TracingDetails
@@ -385,6 +412,45 @@ func (lm *LokiSetting) ReportTracing(tr monitor.TracingDetails) error {
 	}
 
 	return lm.enqueueLog("tracing", header, string(body))
+}
+
+// enqueueBatch 逐条入队一批消息；任一入队失败（队列满/停机排空）立即返回
+// error，使 Redis 侧保持整批 pending 待重投。前面已入队的部分在重投时可能
+// 重复写入，属 at-least-once 的预期行为（监控数据可接受，且比静默丢失好）。
+func (lm *LokiSetting) enqueueBatch(source string, count int, enqueue func(i int) error) error {
+	for i := 0; i < count; i++ {
+		if err := enqueue(i); err != nil {
+			lm.Logger.Warn("[loki-buffer] batch enqueue failed, keep pending for redelivery",
+				zap.String("source", source),
+				zap.Int("failedAt", i),
+				zap.Int("total", count),
+				zap.Error(err),
+			)
+			return err
+		}
+	}
+	return nil
+}
+
+// ReportTracingBatch 批量上报 tracing 详情（批量订阅路径）。
+func (lm *LokiSetting) ReportTracingBatch(trs []monitor.TracingDetails) error {
+	return lm.enqueueBatch("tracing", len(trs), func(i int) error {
+		return lm.ReportTracing(trs[i])
+	})
+}
+
+// ReportErrorBatch 批量上报错误（批量订阅路径）。
+func (lm *LokiSetting) ReportErrorBatch(rrs []core.ErrorReport) error {
+	return lm.enqueueBatch("error", len(rrs), func(i int) error {
+		return lm.ReportError(rrs[i])
+	})
+}
+
+// ReportScheduleJobBatch 批量上报定时任务记录（批量订阅路径）。
+func (lm *LokiSetting) ReportScheduleJobBatch(reqs []schedule.JobHistory) error {
+	return lm.enqueueBatch("schedule", len(reqs), func(i int) error {
+		return lm.ReportScheduleJob(reqs[i])
+	})
 }
 
 // splitUTF8ByBytes 按字节数拆分字符串，并尽量保证 UTF-8 边界完整。
@@ -457,7 +523,8 @@ func splitWithPrefix(s string, max int) []string {
 // source: 数据来源类型，如 tracing/error/schedule。
 // labels: Loki labels。
 // line: 待写入的正文。
-// 返回值：队列写入失败时也返回 nil，仅通过内部日志告警，避免监控链路反向影响业务。
+// 返回值：入队失败（队列已满或正在停机排空）时返回 error，使批量订阅的
+// 调用方（Redis 侧）保持该批消息 pending 待重投，而不是静默丢失。
 func (lm *LokiSetting) enqueueLog(source string, labels map[string]string, line string) error {
 	item := lokiPushItem{
 		labels:     cloneLabels(labels),
@@ -469,11 +536,11 @@ func (lm *LokiSetting) enqueueLog(source string, labels map[string]string, line 
 	lm.queueMu.RLock()
 	defer lm.queueMu.RUnlock()
 	if lm.queueClosed {
-		lm.Logger.Warn("[loki-buffer] writer is stopping, skip enqueue",
+		lm.Logger.Warn("[loki-buffer] writer is stopping, reject enqueue",
 			zap.String("source", source),
 			zap.Int("pending", len(lm.queue)),
 		)
-		return nil
+		return errors.New("loki writer is stopping")
 	}
 
 	select {
@@ -489,98 +556,154 @@ func (lm *LokiSetting) enqueueLog(source string, labels map[string]string, line 
 		}
 		return nil
 	default:
-		lm.Logger.Warn("[loki-buffer] queue is full, drop message",
+		lm.Logger.Warn("[loki-buffer] queue is full, reject enqueue",
 			zap.Int("capacity", cap(lm.queue)),
 			zap.String("source", source),
 			zap.String("labels", fmt.Sprintf("%v", labels)),
 		)
-		return nil
+		return errors.New("loki queue full")
 	}
 }
 
-// runWriter 持续消费缓存队列，并按限速策略写入 Loki。
+// runWriter 持续消费缓存队列，聚合成批量并按自适应限速策略写入 Loki。
 // 返回值：无。
 func (lm *LokiSetting) runWriter() {
 	defer close(lm.workerDone)
 	lm.Logger.Info("[loki-buffer] writer started",
 		zap.Int("capacity", cap(lm.queue)),
+		zap.Int("batchSize", lm.batchSize),
+		zap.Int("batchMaxBytes", lm.batchMaxBytes),
+		zap.Duration("batchFlushInterval", lm.batchFlushInterval),
 		zap.Duration("writePause", lm.writePause),
 		zap.Duration("startupPause", lm.startupPause),
 	)
-	for item := range lm.queue {
-		lm.flushBufferedItem(item)
+	for {
+		batch := lm.collectBatch()
+		if len(batch) == 0 {
+			break // 队列已关闭且排空
+		}
+		lm.flushBatch(batch)
+		lm.adaptivePause()
 	}
 	lm.Logger.Info("[loki-buffer] writer stopped")
 }
 
-// flushBufferedItem 将单条缓存消息拆分、重试并最终写入 Loki。
-// item: 待落库的缓存消息。
-// 返回值：无，内部负责记录完整日志。
-func (lm *LokiSetting) flushBufferedItem(item lokiPushItem) {
-	parts := splitWithPrefix(item.line, lm.MaxBytes)
-	for idx, part := range parts {
-		if !lm.pushWithRetry(item, part, idx+1, len(parts)) {
-			return
-		}
-		lm.sleepBetweenWrites()
+// collectBatch 阻塞等待第一条消息，然后尽力在 flushInterval 窗口内凑满一
+// 批（以 batchSize 条数与 batchMaxBytes 字节数为上限）。返回空切片表示队
+// 列已关闭且排空。
+func (lm *LokiSetting) collectBatch() []lokiPushItem {
+	first, ok := <-lm.queue
+	if !ok {
+		return nil
+	}
+	batch := make([]lokiPushItem, 0, lm.batchSize)
+	batch = append(batch, first)
+	totalBytes := len(first.line)
+
+	if lm.batchSize <= 1 {
+		return batch
 	}
 
-	queueDelay := time.Since(item.enqueuedAt)
+	timer := time.NewTimer(lm.batchFlushInterval)
+	defer timer.Stop()
+	for len(batch) < lm.batchSize && totalBytes < lm.batchMaxBytes {
+		select {
+		case item, ok2 := <-lm.queue:
+			if !ok2 {
+				return batch
+			}
+			batch = append(batch, item)
+			totalBytes += len(item.line)
+		case <-timer.C:
+			return batch
+		}
+	}
+	return batch
+}
+
+// flushBatch 将一批消息拆分为可推送的分片，按字节数切块后写入 Loki。以最旧
+// 消息的入队时间作为本批的排队延迟观测点。
+func (lm *LokiSetting) flushBatch(batch []lokiPushItem) {
+	// 展开为 (labels, line, ts) 条目：超长正文按 MaxBytes 拆分，超大正文
+	// 产生的多个分片与其余消息一起进入批量。
+	var entries []PushEntry
+	for _, item := range batch {
+		parts := splitWithPrefix(item.line, lm.MaxBytes)
+		for _, part := range parts {
+			entries = append(entries, PushEntry{
+				Labels: item.labels,
+				Line:   part,
+				Ts:     item.enqueuedAt,
+			})
+		}
+	}
+
+	// 按字节数切块，确保单个请求不会因某条超大日志而超过 Loki 的接收上限。
+	for len(entries) > 0 {
+		n := 0
+		bytes := 0
+		for n < len(entries) && bytes+len(entries[n].Line) <= lm.batchMaxBytes {
+			bytes += len(entries[n].Line)
+			n++
+		}
+		if n == 0 {
+			n = 1 // 单条分片本身就超过 batchMaxBytes，只能单独推送
+		}
+		lm.pushBatch(entries[:n])
+		entries = entries[n:]
+	}
+
+	queueDelay := time.Since(batch[0].enqueuedAt)
 	if queueDelay >= 3*time.Second {
-		lm.Logger.Info("[loki-buffer] buffered message flushed",
-			zap.String("source", item.source),
+		lm.Logger.Info("[loki-buffer] batch flushed",
+			zap.Int("batchSize", len(batch)),
 			zap.Duration("queueDelay", queueDelay),
 			zap.Int("pending", len(lm.queue)),
 		)
 	}
 }
 
-// pushWithRetry 写入单个分片，并在 429/超时等可恢复错误上执行退避重试。
-// item: 当前处理的缓存消息。
-// line: 当前分片正文。
-// partIndex: 当前分片序号，从 1 开始。
-// totalParts: 当前消息的总分片数。
-// 返回值：true 表示可以继续处理；false 表示停机阶段应尽快结束当前消息。
-func (lm *LokiSetting) pushWithRetry(item lokiPushItem, line string, partIndex int, totalParts int) bool {
+// pushBatch 将一批分片写入 Loki，并在 429/超时/5xx 等可恢复错误上退避重试。
+// 成功后根据是否发生过重试来调整自适应写间隔。
+func (lm *LokiSetting) pushBatch(entries []PushEntry) {
 	backoff := lm.retryPause
+	recovered := false
 	for attempt := 1; ; attempt++ {
-		err := lm.client.Push(item.labels, line)
+		err := lm.client.PushBatch(entries)
 		if err == nil {
 			if attempt > 1 {
+				recovered = true
 				lm.Logger.Info("[loki-buffer] push recovered",
-					zap.String("source", item.source),
+					zap.Int("entries", len(entries)),
 					zap.Int("attempt", attempt),
-					zap.Int("partIndex", partIndex),
-					zap.Int("totalParts", totalParts),
 				)
 			}
-			return true
+			break
 		}
 
 		if !isRetryableLokiError(err) {
-			lm.Logger.Error("[loki-buffer] non-retryable push failed, drop message",
-				zap.String("source", item.source),
-				zap.Int("partIndex", partIndex),
-				zap.Int("totalParts", totalParts),
+			lm.Logger.Error("[loki-buffer] non-retryable push failed, drop batch",
+				zap.Int("entries", len(entries)),
 				zap.Error(err),
 			)
-			return true
+			break
 		}
 
 		if lm.isQueueClosed() && attempt >= 2 {
 			lm.Logger.Warn("[loki-buffer] stop retry because service is shutting down",
-				zap.String("source", item.source),
+				zap.Int("entries", len(entries)),
 				zap.Int("attempt", attempt),
 				zap.Error(err),
 			)
-			return false
+			break
 		}
 
+		recovered = true
 		if backoff > lm.maxRetryPause {
 			backoff = lm.maxRetryPause
 		}
 		lm.Logger.Warn("[loki-buffer] retry push after backoff",
-			zap.String("source", item.source),
+			zap.Int("entries", len(entries)),
 			zap.Int("attempt", attempt),
 			zap.Duration("backoff", backoff),
 			zap.Int("pending", len(lm.queue)),
@@ -591,15 +714,31 @@ func (lm *LokiSetting) pushWithRetry(item lokiPushItem, line string, partIndex i
 			backoff *= 2
 		}
 	}
+
+	// 自适应限速：发生重试（429/5xx/超时）则倍增间隔，干净成功则减半，向
+	// 下不越过 minPause、向上不越过 maxRetryPause。
+	if recovered {
+		if lm.currentPause < lm.maxRetryPause {
+			lm.currentPause *= 2
+			if lm.currentPause > lm.maxRetryPause {
+				lm.currentPause = lm.maxRetryPause
+			}
+		}
+	} else if lm.currentPause > lm.minPause {
+		lm.currentPause /= 2
+		if lm.currentPause < lm.minPause {
+			lm.currentPause = lm.minPause
+		}
+	}
 }
 
-// sleepBetweenWrites 在每次实际写入 Loki 后主动暂停，平滑重启后的突发流量。
-// 返回值：无。
-func (lm *LokiSetting) sleepBetweenWrites() {
+// adaptivePause 在每批写入后按自适应间隔暂停；启动后的慢启动窗口内使用更
+// 大的 startupPause 平滑突发流量。
+func (lm *LokiSetting) adaptivePause() {
 	if lm.isQueueClosed() {
 		return
 	}
-	pause := lm.writePause
+	pause := lm.currentPause
 	if time.Since(lm.startedAt) <= lm.startupSlowWindow && lm.startupPause > pause {
 		pause = lm.startupPause
 	}
@@ -617,7 +756,7 @@ func (lm *LokiSetting) isQueueClosed() bool {
 	return lm.queueClosed
 }
 
-// closeQueue 关闭入队通道，让后台 worker 进入“只排空不接收新数据”状态。
+// closeQueue 关闭入队通道，让后台 worker 进入「只排空不接收新数据」状态。
 // 返回值：无。
 func (lm *LokiSetting) closeQueue() {
 	lm.queueMu.Lock()
@@ -656,7 +795,7 @@ func (lm *LokiSetting) shutdownWriter() {
 	}
 }
 
-// pushSplit 兼容旧调用路径，当前已切换为“先入队、后异步写入”的实现。
+// pushSplit 兼容旧调用路径，当前已切换为「先入队、后异步批量写入」的实现。
 // labels: Loki labels。
 // line: 待写入正文。
 // 返回值：当前实现通常返回 nil。
