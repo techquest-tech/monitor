@@ -3,7 +3,6 @@ package db
 import (
 	"time"
 
-	"github.com/samber/lo"
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/orm"
@@ -51,6 +50,10 @@ type ErrorReportDetails struct {
 	HappendAT time.Time
 }
 
+// dbInsertChunk 单条 INSERT 语句的最大行数：批量到达的数据按此分块写入，
+// 避免单条语句过大触发 MySQL max_allowed_packet 限制。
+const dbInsertChunk = 100
+
 func NewTracingRequestService(db *gorm.DB, logger *zap.Logger) (*TracingRequestServiceDBImpl, error) {
 	gormLogLevel := "error"
 	if viper.IsSet("tracing.db.gorm.logLevel") {
@@ -67,7 +70,6 @@ func NewTracingRequestService(db *gorm.DB, logger *zap.Logger) (*TracingRequestS
 		DB:     db.Session(&gorm.Session{Logger: orm.NewGormLogger(slowThreshold, gormLogLevel)}),
 		Logger: logger,
 	}
-	// orm.AppendEntity(&FullRequestDetails{})
 	return tr, nil
 }
 
@@ -111,84 +113,27 @@ func (tr *TracingRequestServiceDBImpl) buildRequestModel(req monitor.TracingDeta
 	return model, true
 }
 
-func (tr *TracingRequestServiceDBImpl) startBatchWriter(ch <-chan monitor.TracingDetails) {
-	batchSize := 100
-	if viper.IsSet("tracing.db.batch.size") {
-		batchSize = viper.GetInt("tracing.db.batch.size")
-	}
-	if batchSize <= 0 {
-		batchSize = 100
-	}
-
-	flushInterval := 10 * time.Second
-	if viper.IsSet("tracing.db.batch.flushInterval") {
-		if d := viper.GetDuration("tracing.db.batch.flushInterval"); d > 0 {
-			flushInterval = d
+// ReportTracingBatch 批量落库请求追踪详情：整批直接写入，不再经过进程内缓冲层。
+// 返回 error 时（Redis 路径）整批保持 pending 由 pending-check 重投，保留原有
+// 重试机制，避免进程崩溃时缓冲内数据丢失。
+func (tr *TracingRequestServiceDBImpl) ReportTracingBatch(reqs []monitor.TracingDetails) error {
+	models := make([]FullRequestDetails, 0, len(reqs))
+	for _, req := range reqs {
+		model, keep := tr.buildRequestModel(req)
+		if !keep {
+			continue
 		}
-	} else if viper.IsSet("tracing.db.batch.flushIntervalSec") {
-		if sec := viper.GetInt("tracing.db.batch.flushIntervalSec"); sec > 0 {
-			flushInterval = time.Duration(sec) * time.Second
-		}
+		models = append(models, *model)
 	}
-
-	queueSize := 10000
-	if viper.IsSet("tracing.db.batch.queueSize") {
-		queueSize = viper.GetInt("tracing.db.batch.queueSize")
-	} else if batchSize > 0 {
-		queueSize = batchSize * 100
-		if queueSize < 10000 {
-			queueSize = 10000
-		}
+	if len(models) == 0 {
+		return nil
 	}
-	if queueSize <= 0 {
-		queueSize = 10000
+	if err := tr.DB.CreateInBatches(models, dbInsertChunk).Error; err != nil {
+		tr.Logger.Error("batch insert request details failed", zap.Error(err), zap.Int("count", len(models)))
+		return err
 	}
-
-	queue := make(chan monitor.TracingDetails, queueSize)
-
-	tr.Logger.Info("db tracing batch writer enabled",
-		zap.Int("batchSize", batchSize),
-		zap.Duration("flushInterval", flushInterval),
-		zap.Int("queueSize", queueSize),
-	)
-
-	go func() {
-		for v := range ch {
-			queue <- v
-		}
-		close(queue)
-	}()
-
-	go func() {
-		for {
-			items, length, _, ok := lo.BufferWithTimeout(queue, batchSize, flushInterval)
-			if length == 0 && ok {
-				continue
-			}
-
-			models := make([]FullRequestDetails, 0, length)
-			for _, item := range items {
-				model, keep := tr.buildRequestModel(item)
-				if !keep {
-					continue
-				}
-				models = append(models, *model)
-			}
-
-			if len(models) > 0 {
-				err := tr.DB.CreateInBatches(models, batchSize).Error
-				if err != nil {
-					tr.Logger.Error("batch insert request details failed", zap.Error(err), zap.Int("count", len(models)))
-				} else {
-					tr.Logger.Info("batch insert request details done", zap.Int("count", len(models)))
-				}
-			}
-
-			if !ok {
-				return
-			}
-		}
-	}()
+	tr.Logger.Info("batch insert request details done", zap.Int("count", len(models)))
+	return nil
 }
 
 func (tr *TracingRequestServiceDBImpl) buildErrorModel(rr core.ErrorReport) (*ErrorReportDetails, bool) {
@@ -224,120 +169,44 @@ func truncateRunes(s string, max int) string {
 	return string([]rune(s)[:max])
 }
 
-func (tr *TracingRequestServiceDBImpl) startErrorBatchWriter(ch <-chan core.ErrorReport) {
-	batchSize := 100
-	if viper.IsSet("tracing.db.error.batch.size") {
-		batchSize = viper.GetInt("tracing.db.error.batch.size")
-	}
-	if batchSize <= 0 {
-		batchSize = 100
-	}
-
-	flushInterval := 10 * time.Second
-	if viper.IsSet("tracing.db.error.batch.flushInterval") {
-		if d := viper.GetDuration("tracing.db.error.batch.flushInterval"); d > 0 {
-			flushInterval = d
+// ReportErrorBatch 批量落库错误上报：整批直接写入，无进程内缓冲。写失败时（Redis
+// 路径）整批保持 pending 由 pending-check 重投。
+func (tr *TracingRequestServiceDBImpl) ReportErrorBatch(reqs []core.ErrorReport) error {
+	models := make([]ErrorReportDetails, 0, len(reqs))
+	for _, rr := range reqs {
+		model, keep := tr.buildErrorModel(rr)
+		if !keep {
+			continue
 		}
-	} else if viper.IsSet("tracing.db.error.batch.flushIntervalSec") {
-		if sec := viper.GetInt("tracing.db.error.batch.flushIntervalSec"); sec > 0 {
-			flushInterval = time.Duration(sec) * time.Second
-		}
+		models = append(models, *model)
 	}
-
-	queueSize := 10000
-	if viper.IsSet("tracing.db.error.batch.queueSize") {
-		queueSize = viper.GetInt("tracing.db.error.batch.queueSize")
-	} else if batchSize > 0 {
-		queueSize = batchSize * 100
-		if queueSize < 10000 {
-			queueSize = 10000
-		}
+	if len(models) == 0 {
+		return nil
 	}
-	if queueSize <= 0 {
-		queueSize = 10000
+	if err := tr.DB.CreateInBatches(models, dbInsertChunk).Error; err != nil {
+		tr.Logger.Error("batch insert error report details failed", zap.Error(err), zap.Int("count", len(models)))
+		return err
 	}
-
-	queue := make(chan core.ErrorReport, queueSize)
-
-	tr.Logger.Info("db error batch writer enabled",
-		zap.Int("batchSize", batchSize),
-		zap.Duration("flushInterval", flushInterval),
-		zap.Int("queueSize", queueSize),
-	)
-
-	go func() {
-		for v := range ch {
-			queue <- v
-		}
-		close(queue)
-	}()
-
-	go func() {
-		for {
-			items, length, _, ok := lo.BufferWithTimeout(queue, batchSize, flushInterval)
-			if length == 0 && ok {
-				continue
-			}
-
-			models := make([]ErrorReportDetails, 0, length)
-			for _, item := range items {
-				model, keep := tr.buildErrorModel(item)
-				if !keep {
-					continue
-				}
-				models = append(models, *model)
-			}
-
-			if len(models) > 0 {
-				err := tr.DB.CreateInBatches(models, batchSize).Error
-				if err != nil {
-					tr.Logger.Error("batch insert error report details failed", zap.Error(err), zap.Int("count", len(models)))
-				} else {
-					tr.Logger.Info("batch insert error report details done", zap.Int("count", len(models)))
-				}
-			}
-
-			if !ok {
-				return
-			}
-		}
-	}()
+	tr.Logger.Info("batch insert error report details done", zap.Int("count", len(models)))
+	return nil
 }
-
-// func (tr *TracingRequestServiceDBImpl) doLogRequestBody(req monitor.TracingDetails) error {
-// 	model, keep := tr.buildRequestModel(req)
-// 	if !keep {
-// 		return nil
-// 	}
-// 	err := tr.DB.Create(model).Error
-// 	if err != nil {
-// 		tr.Logger.Error("create request failed", zap.Error(err))
-// 		return err
-// 	}
-// 	tr.Logger.Info("create request details done.", zap.Uint("targetID", req.TargetID))
-// 	return nil
-// }
 
 func EnableDBMonitor() {
 	orm.AppendEntity(&FullRequestDetails{})
 	core.Provide(NewTracingRequestService)
 	core.ProvideStartup(func(dbm *TracingRequestServiceDBImpl) core.Startup {
-		ch := monitor.TracingAdaptor.Sub("db")
-		if ch != nil {
-			dbm.startBatchWriter(ch)
-		}
+		// 批量订阅：整批直接落库，无进程内缓冲层（queue + lo.BufferWithTimeout 已移除，
+		// 避免进程崩溃时缓冲内数据丢失）；写失败时（Redis 路径）整批保持 pending 由
+		// pending-check 重投，保留原有重试机制。
+		monitor.SubscribeBatch(monitor.TracingAdaptor, "db", "tracing.batch", dbm.ReportTracingBatch)
 
 		// 错误落库开关：默认关闭，避免影响所有启用 monitor_db 的消费方。
 		// 仅当配置 tracing.db.error.enabled=true 时才注册错误实体并订阅 core.ErrorAdaptor，
 		// 保证错误只在唯一一处（当前为 monitor-adaptor）统一写入。
 		if viper.GetBool("tracing.db.error.enabled") {
 			orm.AppendEntity(&ErrorReportDetails{})
-			errCh := core.ErrorAdaptor.Sub("db")
-			if errCh != nil {
-				dbm.startErrorBatchWriter(errCh)
-			}
+			monitor.SubscribeBatch(core.ErrorAdaptor, "db", "error.batch", dbm.ReportErrorBatch)
 		}
 		return nil
 	})
-	// enableDBCleanup()
 }

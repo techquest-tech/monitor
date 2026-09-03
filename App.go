@@ -2,7 +2,10 @@ package monitor
 
 import (
 	"fmt"
+	"math/rand/v2"
+	"time"
 
+	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/schedule"
 	"go.uber.org/zap"
@@ -37,17 +40,41 @@ type Filterable interface {
 	ShouldFilter(tr TracingDetails) bool
 }
 
-// type P struct {
-// 	dig.In
-// 	services []MonitorService `group:"monitor"`
-// }
+// batchConfig resolves the batch size and flush interval for one batch
+// subscription from the config section named by prefix (e.g. "tracing.batch",
+// "schedule.batch", "error.batch"), falling back to the gin-shared defaults
+// (core.DefaultBatchSize=200, core.DefaultBatchInterval=30s).
+func batchConfig(prefix string) (int, time.Duration) {
+	size := core.DefaultBatchSize
+	interval := core.DefaultBatchInterval
+	if viper.IsSet(prefix+".size") && viper.GetInt(prefix+".size") > 0 {
+		size = viper.GetInt(prefix + ".size")
+	}
+	if viper.IsSet(prefix+".interval") && viper.GetDuration(prefix+".interval") > 0 {
+		interval = viper.GetDuration(prefix + ".interval")
+	}
+	return size, interval
+}
 
-// subscribeBatch 批量订阅一个 adaptor；若实现不支持批量（如被换成非批量
-// 实现），回退为逐条调用同一个批量 handler（每条包成单元素 batch），保证
-// 调用方无需感知底层能力差异。
-func subscribeBatch[T any](adaptor core.Adaptor[T], receiver string, fn core.BatchHandler[T]) {
+// subscribeJitter returns a random 1-5s delay applied when a batch subscription
+// starts listening. Staggering each start avoids consumers that share the same
+// flushInterval (the XReadGroup Block) all timing out and writing at the same
+// moment.
+func subscribeJitter() time.Duration {
+	return time.Second + time.Duration(rand.Int64N(int64(4*time.Second)))
+}
+
+// SubscribeBatch subscribes one adaptor to a batch handler. batchSize /
+// flushInterval are resolved from config (prefix+".size" / prefix+".interval")
+// with core defaults as fallback, and the subscription start is staggered by a
+// random 1-5s jitter. When the adaptor does not support batching, it falls back
+// to single-message delivery through the same batch handler (each message
+// wrapped as a one-element batch).
+func SubscribeBatch[T any](adaptor core.Adaptor[T], receiver, prefix string, fn core.BatchHandler[T]) {
 	if b, ok := adaptor.(core.BatchingAdaptor[T]); ok {
-		b.SubscripterBatch(receiver, core.DefaultBatchSize, core.DefaultBatchInterval, fn)
+		size, interval := batchConfig(prefix)
+		time.Sleep(subscribeJitter())
+		b.SubscripterBatch(receiver, size, interval, fn)
 		return
 	}
 	adaptor.Subscripter(receiver, func(v T) error {
@@ -61,7 +88,7 @@ func SubscribeMonitor(logger *zap.Logger, item MonitorService) {
 
 	if b, ok := item.(MonitorBatchService); ok {
 		if f, ok2 := item.(Filterable); ok2 {
-			subscribeBatch(TracingAdaptor, receiver, func(trs []TracingDetails) error {
+			SubscribeBatch(TracingAdaptor, receiver, "tracing.batch", func(trs []TracingDetails) error {
 				kept := trs[:0]
 				for _, tr := range trs {
 					if f.ShouldFilter(tr) {
@@ -74,10 +101,10 @@ func SubscribeMonitor(logger *zap.Logger, item MonitorService) {
 				return b.ReportTracingBatch(kept)
 			})
 		} else {
-			subscribeBatch(TracingAdaptor, receiver, b.ReportTracingBatch)
+			SubscribeBatch(TracingAdaptor, receiver, "tracing.batch", b.ReportTracingBatch)
 		}
-		subscribeBatch(schedule.JobHistoryAdaptor, receiver, b.ReportScheduleJobBatch)
-		subscribeBatch(core.ErrorAdaptor, receiver, b.ReportErrorBatch)
+		SubscribeBatch(schedule.JobHistoryAdaptor, receiver, "schedule.batch", b.ReportScheduleJobBatch)
+		SubscribeBatch(core.ErrorAdaptor, receiver, "error.batch", b.ReportErrorBatch)
 		return
 	}
 
