@@ -278,9 +278,9 @@ func InitLokiMonitor(logger *zap.Logger) (*LokiSetting, error) {
 		loki.close()
 	})
 
-	setLokiLabel(loki.FixedHeaders, "app", core.AppName)
-	setLokiLabel(loki.FixedHeaders, "version", core.Version)
-
+	// app/version 不在此统一写死为基础 label：各批量写入按单条记录自身的
+	// AppName/AppVersion 打 label，仅当记录缺失时才用 core.AppName/core.Version
+	// 兜底（见 ReportTracingBatch / ReportErrorBatch / ReportScheduleJobBatch）。
 	hostname, _ := os.Hostname()
 	setLokiLabel(loki.FixedHeaders, "hostname", hostname)
 
@@ -389,8 +389,16 @@ func (lm *LokiSetting) ReportErrorBatch(rrs []core.ErrorReport) error {
 	for _, rr := range rrs {
 		header := lm.cloneFixedHeader()
 		setLokiLabel(header, "data_type", "error")
-		setLokiLabel(header, "app", rr.AppName)
-		setLokiLabel(header, "version", rr.AppVersion)
+		app := rr.AppName
+		if app == "" {
+			app = core.AppName
+		}
+		version := rr.AppVersion
+		if version == "" {
+			version = core.Version
+		}
+		setLokiLabel(header, "app", app)
+		setLokiLabel(header, "version", version)
 
 		bodyText, bodyEnc := monitor.EncodePayloadForText(rr.FullStack)
 		setLokiLabel(header, "stack_enc", bodyEnc)
@@ -411,7 +419,16 @@ func (lm *LokiSetting) ReportScheduleJobBatch(reqs []schedule.JobHistory) error 
 	for _, req := range reqs {
 		header := lm.cloneFixedHeader()
 		setLokiLabel(header, "data_type", "cron_job")
-		setLokiLabel(header, "app", req.App)
+		app := req.App
+		if app == "" {
+			app = core.AppName
+		}
+		version := req.AppVersion
+		if version == "" {
+			version = core.Version
+		}
+		setLokiLabel(header, "app", app)
+		setLokiLabel(header, "version", version)
 		setLokiLabel(header, "succeed", strconv.FormatBool(req.Succeed))
 		setLokiLabel(header, "job", req.Job)
 

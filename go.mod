@@ -135,4 +135,3 @@ require (
 )
 
 // TEMP local dev: gin-shared batch-mode changes (remove before publish)
-replace github.com/techquest-tech/gin-shared => ../gin-shared
