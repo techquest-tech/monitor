@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -124,6 +125,11 @@ func EnableDuckDBMonitor() {
 	core.Provide(InitDuckDBMonitor)
 	core.ProvideStartup(func(logger *zap.Logger, s *DuckDBBatchService) core.Startup {
 		if s != nil {
+			// 启动时就把连接与表结构（含新增的 blob 引用列）准备好，
+			// 避免读侧（MCP 查询）在低流量时先于首次写入而撞上缺列。
+			if err := s.EnsureSchema(context.Background()); err != nil {
+				logger.Warn("duckdb ensure schema at startup failed, will retry lazily", zap.Error(err))
+			}
 			monitor.SubscribeMonitor(logger, s)
 			if err := s.scheduleCleanup(logger); err != nil {
 				logger.Error("schedule duckdb cleanup job failed", zap.Error(err))
@@ -131,6 +137,16 @@ func EnableDuckDBMonitor() {
 		}
 		return nil
 	})
+}
+
+// EnsureSchema 主动建连并幂等建表/补列（启动时调用；失败仅告警，写入路径仍会惰性重试）。
+func (s *DuckDBBatchService) EnsureSchema(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conn != nil {
+		return nil
+	}
+	return s.dialLocked(ctx)
 }
 
 // Close 关闭底层 quack 连接（幂等，未连接时无操作）。
@@ -266,7 +282,80 @@ func (s *DuckDBBatchService) dialLocked(ctx context.Context) error {
 			return fmt.Errorf("duckdb ensure schema: %w", err)
 		}
 	}
+	// 老表补列：CREATE TABLE IF NOT EXISTS 不会给既有表加列。
+	if err := s.ensureTracingBlobColumns(ctx); err != nil {
+		return err
+	}
 	return nil
+}
+
+// tracingBlobColumns 是 monitor_tracing 的「大字段外置」引用列（2026-10-12 新增）：
+// 单条 body/resp 实测可达 24 MB，内容改为落存储后端后，这里只存引用与元信息。
+// 列名与顺序必须与 tracingColumns / buildTracingInsert 保持一致。
+var tracingBlobColumns = []struct{ name, ddl string }{
+	{"body_blob_ref", "VARCHAR"},    // "key:path"（storage 配置键 + 相对路径）
+	{"body_blob_size", "BIGINT"},    // 原始字节数
+	{"body_blob_sha256", "VARCHAR"}, // 内容摘要
+	{"resp_blob_ref", "VARCHAR"},
+	{"resp_blob_size", "BIGINT"},
+	{"resp_blob_sha256", "VARCHAR"},
+}
+
+// ensureTracingBlobColumns 幂等补齐 monitor_tracing 的外置引用列。
+// 在持有 s.mu 的前提下由 dialLocked 调用，因此这里直接用 s.conn，不能再走 exec/queryValue（会自锁）。
+func (s *DuckDBBatchService) ensureTracingBlobColumns(ctx context.Context) error {
+	table := s.config.TablePrefix + "monitor_tracing"
+	for _, col := range tracingBlobColumns {
+		sql := "SELECT count(*) FROM information_schema.columns WHERE table_name = " +
+			sqlString(table) + " AND column_name = " + sqlString(col.name)
+		res, err := s.conn.Query(ctx, sql)
+		if err != nil {
+			return fmt.Errorf("duckdb ensure column %s: %w", col.name, err)
+		}
+		var exists bool
+		for ch, err := range res.Chunks(ctx) {
+			if err != nil {
+				return fmt.Errorf("duckdb ensure column %s: %w", col.name, err)
+			}
+			if ch.RowCount() > 0 && ch.ColumnCount() > 0 {
+				if v, err := ch.Value(0, 0); err == nil {
+					exists = countValue(v) > 0
+				}
+			}
+		}
+		if exists {
+			continue
+		}
+		alter := "ALTER TABLE " + table + " ADD COLUMN " + col.name + " " + col.ddl
+		ares, err := s.conn.Query(ctx, alter)
+		if err != nil {
+			return fmt.Errorf("duckdb add column %s: %w", col.name, err)
+		}
+		if err := drain(ctx, ares); err != nil {
+			return fmt.Errorf("duckdb add column %s: %w", col.name, err)
+		}
+		zap.L().Info("duckdb added tracing blob column",
+			zap.String("table", table), zap.String("column", col.name))
+	}
+	return nil
+}
+
+// countValue 把 count(*) 的结果（可能是 int32/int64/其他数值类型）统一成 int64。
+func countValue(v any) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int32:
+		return int64(n)
+	case int:
+		return int64(n)
+	case uint64:
+		return int64(n)
+	case float64:
+		return int64(n)
+	default:
+		return 0
+	}
 }
 
 // ddlStatements 返回三张监控表的幂等建表语句（表名带 tablePrefix）。
@@ -278,7 +367,9 @@ func (s *DuckDBBatchService) ddlStatements() []string {
 			"app_name VARCHAR, app_version VARCHAR, verbosity_level INTEGER, " +
 			"body BLOB, body_enc VARCHAR, duration_ms BIGINT, status INTEGER, target_id BIGINT, " +
 			"resp BLOB, resp_enc VARCHAR, client_ip VARCHAR, user_agent VARCHAR, " +
-			"device VARCHAR, tenant VARCHAR, operator VARCHAR)",
+			"device VARCHAR, tenant VARCHAR, operator VARCHAR, " +
+			"body_blob_ref VARCHAR, body_blob_size BIGINT, body_blob_sha256 VARCHAR, " +
+			"resp_blob_ref VARCHAR, resp_blob_size BIGINT, resp_blob_sha256 VARCHAR)",
 		"CREATE TABLE IF NOT EXISTS " + p + "monitor_error (" +
 			"happened_at TIMESTAMPTZ, app_name VARCHAR, app_version VARCHAR, uri VARCHAR, " +
 			"error_text VARCHAR, full_stack BLOB)",
@@ -331,7 +422,8 @@ func durationMs(d time.Duration) int64 {
 }
 
 const tracingColumns = "(started_at, optionname, uri, method, app_name, app_version, verbosity_level, " +
-	"body, body_enc, duration_ms, status, target_id, resp, resp_enc, client_ip, user_agent, device, tenant, operator)"
+	"body, body_enc, duration_ms, status, target_id, resp, resp_enc, client_ip, user_agent, device, tenant, operator, " +
+	"body_blob_ref, body_blob_size, body_blob_sha256, resp_blob_ref, resp_blob_size, resp_blob_sha256)"
 
 // buildTracingInsert 构造批量 INSERT（含表名前缀）。
 func buildTracingInsert(prefix string, trs []monitor.TracingDetails) string {
@@ -345,15 +437,42 @@ func buildTracingInsert(prefix string, trs []monitor.TracingDetails) string {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		fmt.Fprintf(&b, "(%s, %s, %s, %s, %s, %s, %d, %s, %s, %d, %d, %d, %s, %s, %s, %s, %s, %s, %s)",
+		fmt.Fprintf(&b, "(%s, %s, %s, %s, %s, %s, %d, %s, %s, %d, %d, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
 			tsLiteral(tr.StartedAt), sqlString(tr.Optionname), sqlString(tr.Uri), sqlString(tr.Method),
 			sqlString(tr.AppName), sqlString(tr.AppVersion), int(tr.VerbosityLevel),
 			blobLiteral(tr.Body), sqlString(tr.BodyEnc), durationMs(tr.Durtion),
 			tr.Status, int64(tr.TargetID), blobLiteral(tr.Resp), sqlString(tr.RespEnc),
 			sqlString(tr.ClientIP), sqlString(tr.UserAgent), sqlString(tr.Device),
-			sqlString(tr.Tenant), sqlString(tr.Operator))
+			sqlString(tr.Tenant), sqlString(tr.Operator),
+			blobRefLiteral(tr.BodyBlob), blobSizeLiteral(tr.BodyBlob), blobSHA256Literal(tr.BodyBlob),
+			blobRefLiteral(tr.RespBlob), blobSizeLiteral(tr.RespBlob), blobSHA256Literal(tr.RespBlob))
 	}
 	return b.String()
+}
+
+// blobRefLiteral 把 BlobRef 序列化为 "key:path"（storage 配置键 + 相对路径）；
+// nil 或路径为空时写 NULL。
+func blobRefLiteral(ref *monitor.BlobRef) string {
+	if ref == nil || ref.Path == "" {
+		return "NULL"
+	}
+	return sqlString(ref.Key + ":" + ref.Path)
+}
+
+// blobSizeLiteral 返回引用对象的原始字节数（无引用时 NULL）。
+func blobSizeLiteral(ref *monitor.BlobRef) string {
+	if ref == nil || ref.Path == "" {
+		return "NULL"
+	}
+	return strconv.FormatInt(ref.Size, 10)
+}
+
+// blobSHA256Literal 返回引用对象的内容摘要（无引用时 NULL）。
+func blobSHA256Literal(ref *monitor.BlobRef) string {
+	if ref == nil || ref.Path == "" || ref.SHA256 == "" {
+		return "NULL"
+	}
+	return sqlString(ref.SHA256)
 }
 
 const errorColumns = "(happened_at, app_name, app_version, uri, error_text, full_stack)"

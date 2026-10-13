@@ -115,6 +115,13 @@ func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
 		}
 	}
 
+	// 挂载落盘引用收集器（2026-10-12）：业务侧把 body/resp 落到 storage（如导出 xlsx）
+	// 时，用同一个 ctx 回填引用；下面据此决定记「内容」还是「引用」。
+	// 注意：必须写回 c.Request 的 ctx —— 业务 handler 拿到的是 c（*gin.Context），
+	// 其 Value() 会透传到 c.Request.Context()。
+	bctx, blobRefs := WithBlobRefs(c.Request.Context())
+	c.Request = c.Request.WithContext(bctx)
+
 	// respcache := make([]byte, 0)
 	writer := &RespLogging{
 		cache:          bytes.NewBuffer([]byte{}),
@@ -138,6 +145,32 @@ func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
 		matchedUrl = matchedUrl[:index]
 	}
 
+	// 命中引用时不再携带内容：导出类响应实测可达 24 MB，进 Redis Stream → DuckDB
+	// 会挤爆内存有限的实例（2026-10-12 事故）。内容本身已在 storage 中。
+	bodyRef := blobRefs.FirstBody()
+	respRef := blobRefs.FirstResp()
+	if respRef != nil {
+		respcache = nil
+	}
+	if bodyRef != nil {
+		reqcache = nil
+	}
+
+	// 业务没有自行落盘登记引用时，按大小兜底外溢（tracing.blob.threshold，缺省 128 KiB）：
+	// 内容写入 storage 留档待查，记录只保留引用；写失败则保留原内容（见 spill.go）。
+	if bodyRef == nil && len(reqcache) > 0 {
+		if ref := SpillIfLarge(c.Request.Context(), "body", reqcache, matchedUrl); ref != nil {
+			bodyRef = ref
+			reqcache = nil
+		}
+	}
+	if respRef == nil && len(respcache) > 0 {
+		if ref := SpillIfLarge(c.Request.Context(), "resp", respcache, matchedUrl); ref != nil {
+			respRef = ref
+			respcache = nil
+		}
+	}
+
 	fullLogging := TracingDetails{
 		Optionname:     matchedUrl,
 		Uri:            uri,
@@ -147,11 +180,13 @@ func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
 		VerbosityLevel: VerbosityLevelByMethod(method),
 		Body:           reqcache,
 		BodyEnc:        DetectPayloadEncoding(reqcache),
+		BodyBlob:       bodyRef,
 		Durtion:        dur,
 		Status:         status,
 		TargetID:       rawID,
 		Resp:           respcache,
 		RespEnc:        DetectPayloadEncoding(respcache),
+		RespBlob:       respRef,
 		ClientIP:       c.ClientIP(),
 		UserAgent:      c.Request.UserAgent(),
 		Device:         c.GetHeader("deviceID"),

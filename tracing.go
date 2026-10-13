@@ -41,7 +41,31 @@ type TracingDetails struct {
 	Tenant         string
 	Operator       string
 	StartedAt      time.Time
+	// BodyBlob/RespBlob 为「内容已落到存储后端」时的引用；非 nil 时 Body/Resp 应为空，
+	// 读取方按引用回源取内容（见 BlobRef 注释）。
+	BodyBlob *BlobRef
+	RespBlob *BlobRef
 	// Props     map[string]interface{}
+}
+
+// BlobRef 指向已经落到存储后端的 Body/Resp 内容（记录里不再携带内容本身）。
+//
+// 背景（2026-10-12 事故）：单条 trace 的 body/resp 实测可达 24 MB，全量经
+// Redis Stream → DuckDB 会把内存有限的实例直接打满；而这类内容往往在业务侧
+// 早已落盘（如导出接口生成的 xlsx）。
+//
+// 字段约定（读写统一走 gin-shared pkg/storage，便于以后更换存储后端）：
+//   - Key  ：storage 配置键（如 "fileroot"），读取方用 storage.CreateFs(Key) 拿到
+//     与生产端一致的后端（OSS / SFTP / 本地）。
+//   - Path ：相对该 key 根目录的路径（即存储层返回的 RelativePath，可直接
+//     fs.Open(Path)）。不要存含 root 前缀的 FullPath —— CreateFs 会再次拼接前缀。
+//   - Size ：原始字节数（未经 base64）。
+//   - SHA256：内容摘要（十六进制），便于校验与跨记录比对。
+type BlobRef struct {
+	Key    string
+	Path   string
+	Size   int64
+	SHA256 string
 }
 
 type TracingVerbosityLevel int

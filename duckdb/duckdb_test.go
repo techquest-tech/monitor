@@ -43,6 +43,67 @@ func TestBlobLiteral(t *testing.T) {
 	}
 }
 
+// TestBlobRefLiterals 覆盖外置引用三列的字面量：nil 写 NULL、"key:path" 拼接、size/sha256。
+func TestBlobRefLiterals(t *testing.T) {
+	if got := blobRefLiteral(nil); got != "NULL" {
+		t.Errorf("blobRefLiteral(nil) = %s", got)
+	}
+	if got := blobRefLiteral(&monitor.BlobRef{Key: "fileroot"}); got != "NULL" {
+		t.Errorf("blobRefLiteral(no path) = %s", got)
+	}
+	ref := &monitor.BlobRef{
+		Key:    "fileroot",
+		Path:   "magazzin/inventoryExport/202610/inventory_1-20261012153000.xlsx",
+		Size:   24000000,
+		SHA256: "ab12",
+	}
+	wantRef := "'fileroot:magazzin/inventoryExport/202610/inventory_1-20261012153000.xlsx'"
+	if got := blobRefLiteral(ref); got != wantRef {
+		t.Errorf("blobRefLiteral = %s, want %s", got, wantRef)
+	}
+	if got := blobSizeLiteral(ref); got != "24000000" {
+		t.Errorf("blobSizeLiteral = %s", got)
+	}
+	if got := blobSHA256Literal(ref); got != "'ab12'" {
+		t.Errorf("blobSHA256Literal = %s", got)
+	}
+	if got := blobSizeLiteral(nil); got != "NULL" {
+		t.Errorf("blobSizeLiteral(nil) = %s", got)
+	}
+	if got := blobSHA256Literal(&monitor.BlobRef{Key: "k", Path: "p"}); got != "NULL" {
+		t.Errorf("blobSHA256Literal(no sha) = %s", got)
+	}
+}
+
+// TestBuildTracingInsertIncludesBlobColumns 保证 INSERT 的列与值个数一致、且含外置引用列。
+func TestBuildTracingInsertIncludesBlobColumns(t *testing.T) {
+	sql := buildTracingInsert("prd_", []monitor.TracingDetails{{
+		Optionname: "/scan.InventoryService/Export",
+		StartedAt:  time.Date(2026, 10, 12, 15, 30, 0, 0, time.UTC),
+		RespBlob: &monitor.BlobRef{
+			Key: "fileroot", Path: "owner/cat/202610/x.xlsx", Size: 10, SHA256: "ff",
+		},
+	}})
+	for _, col := range []string{
+		"body_blob_ref", "body_blob_size", "body_blob_sha256",
+		"resp_blob_ref", "resp_blob_size", "resp_blob_sha256",
+	} {
+		if !strings.Contains(sql, col) {
+			t.Errorf("INSERT 缺少列 %s", col)
+		}
+	}
+	if !strings.Contains(sql, "'fileroot:owner/cat/202610/x.xlsx'") {
+		t.Errorf("INSERT 未写入 resp_blob_ref：%s", sql)
+	}
+	t.Logf("生成的 INSERT = %s", sql)
+	// 列数应等于每行值的个数（粗校验：左括号后逗号数一致）。
+	cols := strings.Count(tracingColumns, ",") + 1
+	values := sql[strings.Index(sql, "VALUES ("):]
+	if got := strings.Count(values[:strings.LastIndex(values, ")")], ",") + 1; got != cols {
+		t.Errorf("列数 %d != 值个数 %d", cols, got)
+	}
+}
+
 func TestTsLiteral(t *testing.T) {
 	if got := tsLiteral(time.Time{}); got != "NULL" {
 		t.Errorf("tsLiteral(zero) = %s", got)
