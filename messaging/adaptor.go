@@ -36,28 +36,37 @@ func EnableRedisAdaptors(service messaging.MessagingService) {
 	monitor.TracingAdaptor = messaging.NewRedisAdaptor[monitor.TracingDetails]("monitor.tracing", redis, 1024)
 	schedule.JobHistoryAdaptor = messaging.NewRedisAdaptor[schedule.JobHistory]("monitor.schedule", redis, 1024)
 	core.ErrorAdaptor = messaging.NewRedisAdaptor[core.ErrorReport]("monitor.error", redis, 1024)
+	monitor.ConnectionAdaptor = messaging.NewRedisAdaptor[monitor.ConnectionDetails]("monitor.connection", redis, 1024)
 
 	logger.Info("monitor adaptors switched to redis streaming")
 }
 
 // RunAsAdaptor 从容器解析 messaging 服务并执行 EnableRedisAdaptors。
 // 供消费端进程（monitor-adaptor / scm-datapool）在启动服务之前调用。
+//
+// 若配置了 messaging.redis（专属连接），使用该连接；否则使用容器注入的
+// 默认 messaging 服务（应用 redis: 段）。messaging 服务缺失时保持进程内 chan。
 func RunAsAdaptor() error {
-	return core.GetContainer().Invoke(func(logger *zap.Logger, service messaging.MessagingService) {
-		EnableRedisAdaptors(service)
-	})
+	return core.GetContainer().Invoke(
+		func(logger *zap.Logger, service core.OptionalParam[messaging.MessagingService]) {
+			EnableRedisAdaptors(serviceForAdaptors(logger, service.P))
+		})
 }
 
 // EnabledMessagingBridge 以 startup 形式注册 EnableRedisAdaptors，供生产者
 // 应用（monitor_messaging 构建标签）在服务启动时把全局 adaptor 切到 redis，
 // 业务线程直接 Push 到 redis stream，无需桥接转发。
 //
+// 连接选择：配置了 messaging.redis（专属连接）就用它，否则复用应用默认的
+// redis: 连接（容器注入的 messaging 服务）。
+//
 // 注意：若同时开启了 tracing.console，console 订阅发生在容器构建期、可能早于
 // 本次切换，会绑定到切换前的 chan adaptor（redis 模式下 console 调试输出会
 // 失效）——生产环境不启用 console，影响有限。
 func EnabledMessagingBridge() {
-	core.ProvideStartup(func(logger *zap.Logger, service messaging.MessagingService) core.Startup {
-		EnableRedisAdaptors(service)
-		return nil
-	})
+	core.ProvideStartup(
+		func(logger *zap.Logger, service core.OptionalParam[messaging.MessagingService]) core.Startup {
+			EnableRedisAdaptors(serviceForAdaptors(logger, service.P))
+			return nil
+		})
 }

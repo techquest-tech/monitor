@@ -28,6 +28,10 @@ func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTri
 		rt = http.DefaultTransport
 	}
 	return requests.RoundTripFunc(func(req *http.Request) (res *http.Response, err error) {
+		// tracing 关闭时仍然执行真实请求并保留错误上报，只是不采集 body/resp、
+		// 不再推送 TracingDetails。
+		enabled := TracingEnabled()
+
 		start := time.Now()
 		// fullLogging := TracingDetails{
 		// 	Method:    req.Method,
@@ -51,7 +55,7 @@ func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTri
 		logger := zap.L().With(zap.String("Optionname", fullLogging.Optionname))
 
 		logger.Info("outbound request")
-		if req.Body != nil {
+		if enabled && req.Body != nil {
 			// reqcache := make([]byte, 1024)
 			reqcache, _ := io.ReadAll(req.Body)
 			req.Body = io.NopCloser(bytes.NewBuffer(reqcache))
@@ -82,14 +86,18 @@ func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTri
 			})
 			logger.Error("outbound request error", zap.Error(wrapError))
 		} else {
-			respdetails, err := DumpRespBody(res)
-			if err == nil && len(respdetails) > 0 {
-				fullLogging.Resp = respdetails
-				fullLogging.RespEnc = DetectPayloadEncoding(respdetails)
+			var respdetails []byte
+			var dumpErr error
+			if enabled {
+				respdetails, dumpErr = DumpRespBody(res)
+				if dumpErr == nil && len(respdetails) > 0 {
+					fullLogging.Resp = respdetails
+					fullLogging.RespEnc = DetectPayloadEncoding(respdetails)
+				}
 			}
-			if err != nil || res.StatusCode >= 400 {
+			if dumpErr != nil || res.StatusCode >= 400 {
 				rr := core.ErrorReport{
-					Error:     err,
+					Error:     dumpErr,
 					Uri:       fullLogging.Uri,
 					FullStack: respdetails,
 					HappendAT: time.Now(),
@@ -104,7 +112,9 @@ func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTri
 		}
 
 		// core.Bus.Publish(core.EventTracing, fullLogging)
-		TracingAdaptor.Push(fullLogging)
+		if enabled {
+			TracingAdaptor.Push(fullLogging)
+		}
 		return
 	})
 }

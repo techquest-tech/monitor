@@ -79,6 +79,20 @@ MQTT 订阅         ── TracingDetails ──┘          (chan / Redis Strea
 *   **分发**：三个全局 Adaptor（`TracingAdaptor` / `schedule.JobHistoryAdaptor` / `core.ErrorAdaptor`）默认是进程内 `ChanAdaptor`（缓冲 10000），可被替换为 Redis Streams 实现（见下文「Redis Streams 桥接模式」）。每个后端通过 `SubscribeMonitor` 订阅，支持**逐条**（`Subscripter`）与**批量**（`SubscripterBatch`）两种投递方式。
 *   **持久化**：各后端收到数据后按自身策略写入目标存储，彼此独立、互不影响。
 
+### tracing 总开关（`tracing.enabled`）
+
+tracing 默认开启。设置 `tracing.enabled: false` 可整体关闭**采集端**：
+
+```yaml
+tracing:
+  enabled: false
+```
+
+*   生效点：Gin 入站中间件不再注册；出站 `http.RoundTripper` 不再读取 body/resp、不再推送 tracing（真实请求照常执行，错误上报保留）；MQTT 订阅不再投递 tracing（`Start` 直接返回）。
+*   复用 `TracingRequestService.ShouldLogReq` 判断是否采集的实现（如 gRPC unary / stream 拦截器）也会拿到 `false`，无需各自再加开关。
+*   不受影响：错误上报（`core.ErrorAdaptor`）、定时任务上报（`schedule.JobHistoryAdaptor`）以及各后端的订阅；已写入的数据照常查询/清理。
+*   未配置该 key 视为 `true`；环境变量 `TRACING_ENABLED=false` 同样生效。
+
 ### 入站 HTTP 请求追踪流程
 
 `gin.go` 的 `LogfullRequestDetails` 中间件按以下顺序处理每个请求：
@@ -136,6 +150,37 @@ Push(TracingDetails) ──► XADD ──► Redis Stream ──► XReadGroup(
 *   消费端写失败（如 Loki push 失败、DuckDB 语句错误、MySQL 插入失败）会让整批保持 pending，由 **pending-check 定时重投**，属 at-least-once 语义（监控数据可接受重复）。
 *   **重投与死信**：pending-check 默认 `@every 30m` 运行（`messaging.pendingSchedule` 可配），逐条重投；消息 XADD 后超过 **72 小时**（`DefaultDeadLetterDurtion`，gin-shared `redisStreaming.go` 硬编码常量，非 yaml 可配）仍失败，则 XAck 并写入 `receivedAbandoned.log` 放弃自动重投。
 *   当 messaging 后端是 RAM / no_messaging 时保持进程内 chan 不变。
+
+#### 专属 redis 连接（可选）
+
+默认监控流与应用其它数据共用 `redis:` 段那一条连接。需要隔离实例或 db 时，配置 `messaging.redis`：
+
+```yaml
+messaging:
+  # 不配 host（或 enabled: false）= 沿用 redis: 默认连接
+  redis:
+    host: monitor-redis.example.com
+    port: 6379
+    db: 3
+    account: ""
+    passwd: ""
+    tls: false
+    caroot: ""
+    poolSize: 10
+    minIdle: 2
+    clientName: monitor-messaging
+    dialTimeout: 1s
+    readTimeout: 1s
+    writeTimeout: 1s
+    poolTimeout: 2s
+    maxRetries: 3
+```
+
+* 生效范围：`monitor.tracing` / `monitor.schedule` / `monitor.error` / `monitor.connection` 四条流；业务自己的消息（如 `scm.task.scanned`）仍走默认连接。
+* **生产端与消费端要配同一个 host/port/db**，否则消费端读不到监控流。
+* 环境变量可覆盖同名配置：`MESSAGING_REDIS_HOST`、`MESSAGING_REDIS_PORT`、`MESSAGING_REDIS_PASSWD`、`MESSAGING_REDIS_DB` 等（viper 的 `.` → `_`，key 转大写）。
+* 启动 ping 失败只告警、不中止进程，客户端会持续重连；TLS 证书读取/解析失败按配置错误处理，回退到默认连接。
+* `messaging.pendingSchedule` 与 `messaging.settings.<topic>` 对两种连接是同一套配置。
 
 ### 批量订阅参数与落库
 

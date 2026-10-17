@@ -12,7 +12,7 @@ require (
 	github.com/microsoft/ApplicationInsights-Go v0.4.4
 	github.com/parquet-go/parquet-go v0.32.0
 	github.com/spf13/viper v1.21.0
-	github.com/techquest-tech/gin-shared v1.0.20
+	github.com/techquest-tech/gin-shared v1.0.21
 	go.uber.org/zap v1.28.0
 	google.golang.org/grpc v1.84.0
 	gorm.io/gorm v1.31.2
@@ -100,7 +100,7 @@ require (
 	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/common v0.71.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
-	github.com/redis/go-redis/v9 v9.22.0 // indirect
+	github.com/redis/go-redis/v9 v9.22.0
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/samber/lo v1.53.0

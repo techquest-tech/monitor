@@ -204,6 +204,15 @@ func (s *DuckDBBatchService) ReportScheduleJobBatch(reqs []schedule.JobHistory) 
 	return s.execWithTimeout(sql)
 }
 
+// ReportConnectionBatch writes connection-level events in one INSERT.
+// It implements monitor.ConnectionService.
+func (s *DuckDBBatchService) ReportConnectionBatch(cds []monitor.ConnectionDetails) error {
+	if len(cds) == 0 {
+		return nil
+	}
+	return s.execWithTimeout(buildConnectionInsert(s.config.TablePrefix, cds))
+}
+
 // --- 连接与执行 ---
 
 func (s *DuckDBBatchService) execWithTimeout(sql string) error {
@@ -377,6 +386,11 @@ func (s *DuckDBBatchService) ddlStatements() []string {
 			"start_at TIMESTAMPTZ, finished_at TIMESTAMPTZ, next_at TIMESTAMPTZ, " +
 			"app VARCHAR, app_version VARCHAR, job VARCHAR, cron VARCHAR, " +
 			"duration_ms BIGINT, succeed BOOLEAN, message VARCHAR, disabled BOOLEAN)",
+		"CREATE TABLE IF NOT EXISTS " + p + "monitor_connection (" +
+			"happened_at TIMESTAMPTZ, action VARCHAR, conn_id VARCHAR, started_at TIMESTAMPTZ, " +
+			"duration_ms BIGINT, rpcs BIGINT, peer VARCHAR, local_addr VARCHAR, client_ip VARCHAR, " +
+			"client VARCHAR, device VARCHAR, sn VARCHAR, app_name VARCHAR, app_version VARCHAR, " +
+			"tenant VARCHAR, reason VARCHAR)",
 	}
 }
 
@@ -446,6 +460,34 @@ func buildTracingInsert(prefix string, trs []monitor.TracingDetails) string {
 			sqlString(tr.Tenant), sqlString(tr.Operator),
 			blobRefLiteral(tr.BodyBlob), blobSizeLiteral(tr.BodyBlob), blobSHA256Literal(tr.BodyBlob),
 			blobRefLiteral(tr.RespBlob), blobSizeLiteral(tr.RespBlob), blobSHA256Literal(tr.RespBlob))
+	}
+	return b.String()
+}
+
+// connectionColumns must stay in sync with the monitor_connection DDL and with
+// buildConnectionInsert.
+const connectionColumns = "(happened_at, action, conn_id, started_at, duration_ms, rpcs, " +
+	"peer, local_addr, client_ip, client, device, sn, app_name, app_version, tenant, reason)"
+
+// buildConnectionInsert builds one batched INSERT for connection events.
+func buildConnectionInsert(prefix string, cds []monitor.ConnectionDetails) string {
+	var b strings.Builder
+	b.WriteString("INSERT INTO ")
+	b.WriteString(prefix)
+	b.WriteString("monitor_connection ")
+	b.WriteString(connectionColumns)
+	b.WriteString(" VALUES ")
+	for i, cd := range cds {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "(%s, %s, %s, %s, %d, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+			tsLiteral(cd.HappenedAt), sqlString(string(cd.Action)), sqlString(cd.ConnID),
+			tsLiteral(cd.StartedAt), durationMs(cd.Duration), cd.RPCs,
+			sqlString(cd.Peer), sqlString(cd.LocalAddr), sqlString(cd.ClientIP),
+			sqlString(cd.Client), sqlString(cd.Device), sqlString(cd.SN),
+			sqlString(cd.AppName), sqlString(cd.AppVersion), sqlString(cd.Tenant),
+			sqlString(cd.Reason))
 	}
 	return b.String()
 }

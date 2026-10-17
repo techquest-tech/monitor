@@ -137,6 +137,12 @@ type TracingRequestService struct {
 }
 
 func (tr *TracingRequestService) ShouldLogReq(ctx context.Context, uri string) bool {
+	// 总开关优先：tracing 关闭后，所有用本方法判断是否采集的实现（Gin 中间件、
+	// gRPC unary/stream 拦截器等）都会拿到 false，不必各自再判断一次。
+	if !TracingEnabled() {
+		return false
+	}
+
 	matched := len(tr.Included) == 0
 	for _, item := range tr.Included {
 		if uri == item {
@@ -231,12 +237,16 @@ var InitTracingService = func(logger *zap.Logger) *TracingRequestService {
 
 	settings := viper.Sub("tracing")
 	if settings == nil {
-		logger.Warn("tracing module loaded, but disabled.")
+		logger.Info("tracing service is enabled (no tracing section, using defaults).")
 		return sr
 	}
 	// if settings != nil {
 	settings.Unmarshal(sr)
 	// }
+	if !TracingEnabled() {
+		logger.Info("tracing service is disabled by tracing.enabled=false.")
+		return sr
+	}
 	logger.Info("tracing service is enabled.")
 	if (sr.Request || sr.Resp) && sr.Console {
 		c := InitConsoleTracingService(sr.Log)
@@ -251,6 +261,18 @@ var InitTracingService = func(logger *zap.Logger) *TracingRequestService {
 // redis-streaming adaptor (see messaging.NewRedisAdaptor) before services start.
 var TracingAdaptor core.Adaptor[TracingDetails] = core.NewChanAdaptor[TracingDetails](10000)
 
+// TracingEnabled 报告 tracing 采集是否开启。配置项 tracing.enabled，缺省为 true。
+//
+// 只控制采集端：Gin 入站中间件、出站 HTTP 拦截、MQTT 订阅。错误（ErrorAdaptor）
+// 与定时任务（JobHistoryAdaptor）上报是独立通道，不受此开关影响；各后端的订阅
+// 与已落库数据也不受影响。
+func TracingEnabled() bool {
+	if !viper.IsSet("tracing.enabled") {
+		return true
+	}
+	return viper.GetBool("tracing.enabled")
+}
+
 func init() {
 	core.Provide(InitTracingService)
 	ginshared.Provide(func(sr *TracingRequestService) ginshared.Component {
@@ -262,5 +284,8 @@ func init() {
 	// core.ProvideStartup(InitGinComponent)
 }
 
+// EnabledTracing 是历史 API：过去应用调用它来显式注册 tracing 服务。现在 tracing
+// 默认开启（tracing.enabled 缺省 true），调用它不再改变行为；要关闭请配置
+// tracing.enabled=false。
 func EnabledTracing() {
 }

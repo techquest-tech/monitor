@@ -36,6 +36,13 @@ type MonitorBatchService interface {
 	ReportScheduleJobBatch(reqs []schedule.JobHistory) error
 }
 
+// ConnectionService is the optional interface for connection-level events.
+// It is deliberately separate from MonitorService so that receivers which only
+// track requests / errors / jobs keep compiling unchanged.
+type ConnectionService interface {
+	ReportConnectionBatch(conns []ConnectionDetails) error
+}
+
 type Filterable interface {
 	ShouldFilter(tr TracingDetails) bool
 }
@@ -85,6 +92,12 @@ func SubscribeBatch[T any](adaptor core.Adaptor[T], receiver, prefix string, fn 
 func SubscribeMonitor(logger *zap.Logger, item MonitorService) {
 	receiver := fmt.Sprintf("%T", item)
 	logger.Info("sub monitor service", zap.String("service", receiver))
+
+	// Connection events are a separate, optional feature: only receivers that
+	// implement ConnectionService get subscribed, so nothing else changes.
+	if cs, ok := item.(ConnectionService); ok {
+		SubscribeBatch(ConnectionAdaptor, receiver, "connection.batch", cs.ReportConnectionBatch)
+	}
 
 	if b, ok := item.(MonitorBatchService); ok {
 		if f, ok2 := item.(Filterable); ok2 {

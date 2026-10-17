@@ -53,6 +53,10 @@ func NewMqttSource(logger *zap.Logger) (*MqttSource, error) {
 }
 
 func (ms *MqttSource) Start() {
+	if !monitor.TracingEnabled() {
+		ms.Logger.Info("mqtt tracing source disabled by tracing.enabled=false")
+		return
+	}
 	if len(ms.Config.Topic) == 0 {
 		ms.Logger.Warn("mqtt tracing source enabled, but no topic configured")
 		return
@@ -72,6 +76,10 @@ func (ms *MqttSource) Start() {
 }
 
 func (ms *MqttSource) onMessage(client mqtt.Client, msg mqtt.Message) {
+	if !monitor.TracingEnabled() {
+		return
+	}
+
 	verbosityLevel := monitor.TracingVerbosityLevelRead
 	if ms.Config != nil && ms.Config.TopicVerbosityLevel != nil {
 		if lvl, ok := ms.Config.TopicVerbosityLevel[msg.Topic()]; ok {

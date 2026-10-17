@@ -26,6 +26,10 @@ type GinTracingService struct {
 func (tr *GinTracingService) Priority() int { return 5 }
 
 func (tr *GinTracingService) OnEngineInited(r *gin.Engine) error {
+	if !TracingEnabled() {
+		zap.L().Info("tracing gin middleware disabled by tracing.enabled=false.")
+		return nil
+	}
 	zap.L().Info("tracing gin middleware ready.")
 	r.Use(tr.LogfullRequestDetails)
 	return nil
@@ -72,6 +76,11 @@ func extractTracingUser(c *gin.Context) (tenant string, operator string) {
 // c: 当前请求上下文。
 // 返回值：无。
 func (tr *GinTracingService) LogfullRequestDetails(c *gin.Context) {
+	if !TracingEnabled() {
+		c.Next()
+		return
+	}
+
 	startAt := time.Now()
 	userAgent := c.Request.UserAgent()
 	if strings.HasPrefix(userAgent, "kube-probe") {
