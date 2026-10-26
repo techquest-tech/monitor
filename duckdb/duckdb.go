@@ -1,13 +1,13 @@
 // Package duckdb 提供 monitor 数据的 DuckDB 落库消费者（Quack 远程协议 + 批量模式）。
 //
 // 通过 Redis Streams 的批量订阅（gin-shared BatchingAdaptor：200 条 / 1s 整批、
-// 整批成功才 XAck）接收 tracing / error / schedule 三类监控数据，每个批量方法把
-// 整批拼成一条多行 INSERT，经纯 Go 的 Quack 客户端 github.com/mehrabr/duckcall
-// （无 CGO、无内嵌引擎）直接提交到 176.87 的 DuckDB 实例。
+// 整批成功才 XAck）接收 tracing / error / schedule / connection 四类监控数据，每个
+// 批量方法把整批拼成一条多行 INSERT，经本仓库的 quack 客户端（底层官方
+// github.com/duckdb/duckdb-go/v2，内嵌 DuckDB 2.x，CGO）提交到 DuckDB 实例。
 //
-// 说明：duckcall 的 database/sql 驱动是只读的（Exec 返回 ErrReadOnly），但其
-// native API Conn.Query 可执行任意 SQL（DDL/DML 均实测通过，服务器返回受影响
-// 行数作为单行结果），本包直接使用 native API 完成批量写入。
+// 【2026-10-26 客户端切换】原先用纯 Go 的 github.com/mehrabr/duckcall。但 Quack
+// wire 协议按大版本锁定（1.5.5 ↔ 2.0 双向不兼容），而 duckcall 上游最新版仍只实现
+// wire v1，没有 2.0 版本可升。故改用官方驱动；统一经 r.query() 透传，语义等价。
 //
 // 用法：monitor-adaptor 的 Makefile build tags 增加 monitor_duckdb（bootup/duckdb.go
 // 自动注册），配置 tracing.duckdb.*：
@@ -23,19 +23,17 @@ package duckdb
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/mehrabr/duckcall"
-	"github.com/mehrabr/duckcall/wire"
 	"github.com/spf13/viper"
 	"github.com/techquest-tech/gin-shared/pkg/core"
 	"github.com/techquest-tech/gin-shared/pkg/schedule"
 	"github.com/techquest-tech/monitor"
+	"github.com/techquest-tech/monitor/quack"
 	"go.uber.org/zap"
 )
 
@@ -61,7 +59,7 @@ type DuckDBBatchService struct {
 	logger *zap.Logger
 
 	mu   sync.Mutex // 串行化写入 + 保护 conn 重连
-	conn *duckcall.Conn
+	conn *quack.Conn
 }
 
 // loadConfig 从 viper 读取 tracing.duckdb，应用默认值。
@@ -156,7 +154,7 @@ func (s *DuckDBBatchService) Close(ctx context.Context) error {
 	if s.conn == nil {
 		return nil
 	}
-	err := s.conn.Close(ctx)
+	err := s.conn.Close()
 	s.conn = nil
 	return err
 }
@@ -219,63 +217,65 @@ func (s *DuckDBBatchService) execWithTimeout(sql string) error {
 	ctx, cancel := context.WithTimeout(context.Background(),
 		time.Duration(s.config.WriteTimeoutMS)*time.Millisecond)
 	defer cancel()
-	res, err := s.exec(ctx, sql)
-	if err != nil {
-		return err
-	}
-	return drain(ctx, res)
+	return s.exec(ctx, sql)
 }
 
-// exec 在远端执行一条 SQL（建表/写入均走此路径），连接失效时自动重连一次。
-func (s *DuckDBBatchService) exec(ctx context.Context, sql string) (*duckcall.Result, error) {
+// exec 在远端执行一条 SQL（建表/写入均走此路径）。
+// 连接失效（服务端重启/会话回收）由 quack.Conn 内部重连并重试一次；
+// 语句本身错误原样透出，让 Redis 保持整批 pending 待重投。
+func (s *DuckDBBatchService) exec(ctx context.Context, sql string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.queryLocked(ctx, sql, 1)
+	if s.conn == nil {
+		if err := s.dialLocked(ctx); err != nil {
+			return err
+		}
+	}
+	return s.conn.Exec(ctx, sql)
+}
+
+// execRows 执行一条会返回受影响行数的语句（DELETE 等），返回首行首列的整数。
+func (s *DuckDBBatchService) execRows(ctx context.Context, sql string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conn == nil {
+		if err := s.dialLocked(ctx); err != nil {
+			return 0, err
+		}
+	}
+	rows, err := s.conn.Query(ctx, sql)
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) > 0 && len(rows[0]) > 0 {
+		return countValue(rows[0][0]), nil
+	}
+	return 0, nil
 }
 
 // queryValue 执行单值查询并返回第一行第一列（nil = 无结果/NULL），供观测/测试。
 func (s *DuckDBBatchService) queryValue(ctx context.Context, sql string) (any, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	res, err := s.queryLocked(ctx, sql, 1)
-	if err != nil {
-		return nil, err
-	}
-	for ch, err := range res.Chunks(ctx) {
-		if err != nil {
-			return nil, err
-		}
-		if ch.RowCount() > 0 && ch.ColumnCount() > 0 {
-			return ch.Value(0, 0)
-		}
-	}
-	return nil, nil
-}
-
-// queryLocked 在持有 mu 的前提下执行；首次调用（或重连后）自动 Dial 并幂等建表。
-func (s *DuckDBBatchService) queryLocked(ctx context.Context, sql string, retries int) (*duckcall.Result, error) {
 	if s.conn == nil {
 		if err := s.dialLocked(ctx); err != nil {
 			return nil, err
 		}
 	}
-	res, err := s.conn.Query(ctx, sql)
+	rows, err := s.conn.Query(ctx, sql)
 	if err != nil {
-		// 仅连接过期（会话被服务器遗忘）触发重连；语句错误（如表不存在）直接透出，
-		// 让 Redis 保持整批 pending 待重投。
-		if retries > 0 && errors.Is(err, wire.ErrConnectionExpired) {
-			s.conn = nil
-			return s.queryLocked(ctx, sql, retries-1)
-		}
 		return nil, err
 	}
-	return res, nil
+	if len(rows) > 0 && len(rows[0]) > 0 {
+		return rows[0][0], nil
+	}
+	return nil, nil
 }
 
 // dialLocked 建立 quack 连接并幂等建表（CREATE TABLE IF NOT EXISTS，重连后无害重跑）。
 func (s *DuckDBBatchService) dialLocked(ctx context.Context) error {
-	conn, err := duckcall.Dial(ctx, duckcall.Config{
-		Endpoint: "http://" + s.config.Endpoint,
+	conn, err := quack.Dial(ctx, quack.Config{
+		Endpoint: s.config.Endpoint,
 		Token:    s.config.Token,
 	})
 	if err != nil {
@@ -283,16 +283,16 @@ func (s *DuckDBBatchService) dialLocked(ctx context.Context) error {
 	}
 	s.conn = conn
 	for _, ddl := range s.ddlStatements() {
-		res, err := s.conn.Query(ctx, ddl)
-		if err != nil {
-			return fmt.Errorf("duckdb ensure schema: %w", err)
-		}
-		if err := drain(ctx, res); err != nil {
+		if err := conn.Exec(ctx, ddl); err != nil {
+			_ = conn.Close()
+			s.conn = nil
 			return fmt.Errorf("duckdb ensure schema: %w", err)
 		}
 	}
 	// 老表补列：CREATE TABLE IF NOT EXISTS 不会给既有表加列。
 	if err := s.ensureTracingBlobColumns(ctx); err != nil {
+		_ = conn.Close()
+		s.conn = nil
 		return err
 	}
 	return nil
@@ -317,30 +317,19 @@ func (s *DuckDBBatchService) ensureTracingBlobColumns(ctx context.Context) error
 	for _, col := range tracingBlobColumns {
 		sql := "SELECT count(*) FROM information_schema.columns WHERE table_name = " +
 			sqlString(table) + " AND column_name = " + sqlString(col.name)
-		res, err := s.conn.Query(ctx, sql)
+		rows, err := s.conn.Query(ctx, sql)
 		if err != nil {
 			return fmt.Errorf("duckdb ensure column %s: %w", col.name, err)
 		}
 		var exists bool
-		for ch, err := range res.Chunks(ctx) {
-			if err != nil {
-				return fmt.Errorf("duckdb ensure column %s: %w", col.name, err)
-			}
-			if ch.RowCount() > 0 && ch.ColumnCount() > 0 {
-				if v, err := ch.Value(0, 0); err == nil {
-					exists = countValue(v) > 0
-				}
-			}
+		if len(rows) > 0 && len(rows[0]) > 0 {
+			exists = countValue(rows[0][0]) > 0
 		}
 		if exists {
 			continue
 		}
 		alter := "ALTER TABLE " + table + " ADD COLUMN " + col.name + " " + col.ddl
-		ares, err := s.conn.Query(ctx, alter)
-		if err != nil {
-			return fmt.Errorf("duckdb add column %s: %w", col.name, err)
-		}
-		if err := drain(ctx, ares); err != nil {
+		if err := s.conn.Exec(ctx, alter); err != nil {
 			return fmt.Errorf("duckdb add column %s: %w", col.name, err)
 		}
 		zap.L().Info("duckdb added tracing blob column",
@@ -367,7 +356,7 @@ func countValue(v any) int64 {
 	}
 }
 
-// ddlStatements 返回三张监控表的幂等建表语句（表名带 tablePrefix）。
+// ddlStatements 返回四张监控表的幂等建表语句（表名带 tablePrefix）。
 func (s *DuckDBBatchService) ddlStatements() []string {
 	p := s.config.TablePrefix
 	return []string{
@@ -392,19 +381,6 @@ func (s *DuckDBBatchService) ddlStatements() []string {
 			"client VARCHAR, device VARCHAR, sn VARCHAR, app_name VARCHAR, app_version VARCHAR, " +
 			"tenant VARCHAR, reason VARCHAR)",
 	}
-}
-
-// drain 消费完整个结果集（INSERT 等无结果语句的服务器侧执行已在 Query 时完成，
-// 此处兜底捕获流式阶段的错误并释放服务器端结果状态）。
-func drain(ctx context.Context, res *duckcall.Result) error {
-	defer res.Close(ctx)
-	for ch, err := range res.Chunks(ctx) {
-		if err != nil {
-			return err
-		}
-		_ = ch
-	}
-	return nil
 }
 
 // --- SQL 构建（可单测的纯函数） ---
