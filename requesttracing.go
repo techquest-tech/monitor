@@ -80,9 +80,15 @@ func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTri
 			// core.Bus.Publish(core.EventError, wrapError)
 			fullLogging.Resp = []byte("error:" + err.Error())
 			fullLogging.RespEnc = PayloadEncodingUTF8
+			// 传输层失败（timeout / dial / broken pipe）同样要带 AppName 与发生时间：
+			// 缺 HappendAT 会让落库端写成 NULL happened_at，该行在时间范围查询里不可见，
+			// 也不会推进「表最后写入时间」的新鲜度判据（2026-10-27 P1 误报根因）。
 			core.ErrorAdaptor.Push(core.ErrorReport{
-				Error: wrapError,
-				Uri:   fullLogging.Uri,
+				AppName:    errorReportAppName(fullLogging.AppName),
+				AppVersion: errorReportAppVersion(fullLogging.AppVersion),
+				Error:      wrapError,
+				Uri:        fullLogging.Uri,
+				HappendAT:  time.Now(),
 			})
 			logger.Error("outbound request error", zap.Error(wrapError))
 		} else {
@@ -97,10 +103,12 @@ func LogTracying(fullLogging TracingDetails, rt http.RoundTripper) http.RoundTri
 			}
 			if dumpErr != nil || res.StatusCode >= 400 {
 				rr := core.ErrorReport{
-					Error:     dumpErr,
-					Uri:       fullLogging.Uri,
-					FullStack: respdetails,
-					HappendAT: time.Now(),
+					AppName:    errorReportAppName(fullLogging.AppName),
+					AppVersion: errorReportAppVersion(fullLogging.AppVersion),
+					Error:      dumpErr,
+					Uri:        fullLogging.Uri,
+					FullStack:  respdetails,
+					HappendAT:  time.Now(),
 				}
 				if rr.Error == nil {
 					rr.Error = fmt.Errorf("res unexpected status code %d", res.StatusCode)
@@ -125,6 +133,26 @@ func LogOutbound(rt http.RoundTripper) http.RoundTripper {
 		AppVersion:     core.Version,
 		VerbosityLevel: TracingVerbosityLevelThirdParty,
 	}, rt)
+}
+
+// errorReportAppName 决定错误上报里填的 AppName：优先用调用方通过 LogTracying 传入的
+// TracingDetails.AppName（from），为空时回落到进程级 core.AppName。
+//
+// 为什么必须填：monitor.error → DuckDB monitor_error 的 app_name 来自这里，缺了就只能
+// 按 uri/error_text 检索（2026-10-27 复盘发现 prd 表里有 11,499 行 app_name 为空）。
+func errorReportAppName(from string) string {
+	if from != "" {
+		return from
+	}
+	return core.AppName
+}
+
+// errorReportAppVersion 同 errorReportAppName，为空时回落到 core.Version。
+func errorReportAppVersion(from string) string {
+	if from != "" {
+		return from
+	}
+	return core.Version
 }
 
 // emptyBody is an instance of empty reader.

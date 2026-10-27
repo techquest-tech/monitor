@@ -2,10 +2,12 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
@@ -124,4 +126,58 @@ func TestOutboundTracingDisabled(t *testing.T) {
 	assert.Equal(t, "test.outbound", rec.pushes[0].Optionname)
 	assert.Equal(t, "hello", string(rec.pushes[0].Body))
 	assert.Equal(t, 200, rec.pushes[0].Status)
+}
+
+// recorderErrorAdaptor 记录错误上报，不启动投递 goroutine。
+type recorderErrorAdaptor struct {
+	pushes []core.ErrorReport
+}
+
+func (r *recorderErrorAdaptor) Push(data core.ErrorReport) { r.pushes = append(r.pushes, data) }
+func (r *recorderErrorAdaptor) Sub(receiver string) <-chan core.ErrorReport {
+	return nil
+}
+func (r *recorderErrorAdaptor) Subscripter(receiver string, fn core.Handler[core.ErrorReport]) {}
+func (r *recorderErrorAdaptor) Start()                                                         {}
+func (r *recorderErrorAdaptor) Stop()                                                          {}
+func (r *recorderErrorAdaptor) Receivers() []string                                            { return nil }
+
+var _ core.Adaptor[core.ErrorReport] = (*recorderErrorAdaptor)(nil)
+
+// TestOutboundTransportErrorCarriesHappendATAndApp 锁定 2026-10-27 的根因修复：
+// outbound 传输错误（timeout/dial/broken pipe）必须带 HappendAT 与 AppName，
+// 否则落库变成 happened_at IS NULL / app_name 空，既不进时间范围查询，也不推进
+// 「表最后写入时间」的新鲜度判据（当日因此误发 error 落库中断 P1）。
+func TestOutboundTransportErrorCarriesHappendATAndApp(t *testing.T) {
+	resetTracingConfig(t)
+
+	rec := &recorderErrorAdaptor{}
+	old := core.ErrorAdaptor
+	core.ErrorAdaptor = rec
+	t.Cleanup(func() { core.ErrorAdaptor = old })
+
+	transport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, errors.New("dial tcp 192.168.7.150:80: i/o timeout")
+	})
+
+	before := time.Now().Add(-time.Second)
+	rt := LogTracying(TracingDetails{
+		Optionname: "test.err",
+		AppName:    "scm-order",
+		AppVersion: "v1.2.3",
+	}, transport)
+	req, err := http.NewRequest(http.MethodPost,
+		"http://192.168.7.150/GarmentLogistics/Garment/DETRFID/saveRFIDInfo", strings.NewReader("{}"))
+	require.NoError(t, err)
+
+	_, err = rt.RoundTrip(req)
+	require.Error(t, err)
+
+	require.Len(t, rec.pushes, 1)
+	p := rec.pushes[0]
+	assert.False(t, p.HappendAT.IsZero(), "传输错误必须带 HappendAT（否则落库为 NULL happened_at）")
+	assert.True(t, p.HappendAT.After(before), "HappendAT 应取上报时刻")
+	assert.Equal(t, "scm-order", p.AppName, "AppName 应取自 TracingDetails")
+	assert.Equal(t, "v1.2.3", p.AppVersion)
+	assert.Equal(t, "http://192.168.7.150/GarmentLogistics/Garment/DETRFID/saveRFIDInfo", p.Uri)
 }

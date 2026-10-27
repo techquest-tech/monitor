@@ -2,6 +2,7 @@ package duckdb
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -222,6 +223,34 @@ func TestBuildErrorInsert(t *testing.T) {
 		if !strings.Contains(sql, want) {
 			t.Errorf("buildErrorInsert missing %q in:\n%s", want, sql)
 		}
+	}
+}
+
+// TestBuildErrorInsertZeroHappendAT 上报端没填 HappendAT 时不能落 NULL：
+// NULL happened_at 既进不了时间范围查询，也不推进「表最后写入时间」（2026-10-27 P1 误报根因）。
+func TestBuildErrorInsertZeroHappendAT(t *testing.T) {
+	before := time.Now().UTC().Add(-2 * time.Second)
+	sql := buildErrorInsert("prd_", []core.ErrorReport{{
+		AppName: "scm-saas",
+		Uri:     "/decode/ping",
+		Error:   errors.New("context deadline exceeded"),
+		// HappendAT 零值
+	}})
+
+	if strings.Contains(sql, "(NULL, ") {
+		t.Fatalf("零值 HappendAT 不应落 NULL:\n%s", sql)
+	}
+	m := regexp.MustCompile(`'([^']*)'::TIMESTAMPTZ`).FindStringSubmatch(sql)
+	if m == nil {
+		t.Fatalf("零值 HappendAT 应退化为入库时刻字面量:\n%s", sql)
+	}
+	got, err := time.Parse("2006-01-02 15:04:05.999999Z07:00", m[1])
+	if err != nil {
+		t.Fatalf("时间字面量解析失败 %q: %v", m[1], err)
+	}
+	// 退化值必须落在「刚刚」附近，而不是某个历史常量（如 1754-08-30 那类坏值）。
+	if got.Before(before) || got.After(time.Now().UTC().Add(2*time.Second)) {
+		t.Errorf("退化时间 %s 不在当前时刻附近", got)
 	}
 }
 

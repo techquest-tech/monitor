@@ -519,6 +519,20 @@ func blobSHA256Literal(ref *monitor.BlobRef) string {
 
 const errorColumns = "(happened_at, app_name, app_version, uri, error_text, full_stack)"
 
+// errorHappendAt 返回错误上报的落库时间：上报端没填 HappendAT（历史版本 monitor 的
+// outbound 传输错误分支就是这样）时退化为**入库时刻**近似。
+//
+// 为什么不能写 NULL：happened_at 是时间范围查询与「表最后写入时间」新鲜度判据的唯一
+// 依据，NULL 行两者都不可见 —— 2026-10-27 PRD 就是「error 流 4 小时只有 2 条、且这
+// 2 条 HappendAT 为零」导致表新鲜度停在 4 小时前，被误判成落库中断发 P1。批量落库
+// 延迟只有秒级，退化到入库时刻误差可接受；上游补上 HappendAT 后本兜底自然不生效。
+func errorHappendAt(er core.ErrorReport) time.Time {
+	if er.HappendAT.IsZero() {
+		return time.Now()
+	}
+	return er.HappendAT
+}
+
 // buildErrorInsert 构造错误上报批量 INSERT。
 func buildErrorInsert(prefix string, rrs []core.ErrorReport) string {
 	var b strings.Builder
@@ -536,7 +550,7 @@ func buildErrorInsert(prefix string, rrs []core.ErrorReport) string {
 			text = er.Error.Error()
 		}
 		fmt.Fprintf(&b, "(%s, %s, %s, %s, %s, %s)",
-			tsLiteral(er.HappendAT), sqlString(er.AppName), sqlString(er.AppVersion),
+			tsLiteral(errorHappendAt(er)), sqlString(er.AppName), sqlString(er.AppVersion),
 			sqlString(er.Uri), sqlString(text), blobLiteral(er.FullStack))
 	}
 	return b.String()
